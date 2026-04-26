@@ -1,0 +1,106 @@
+import type { QuaternionType, Vector3Type } from '@dcl/ecs'
+
+/**
+ * Single sample on a track; used by physics output and the keyframe optimizer.
+ * Uses ECS schema vector / quaternion shapes (same as `Schemas.Vector3` / `Schemas.Quaternion` payloads).
+ */
+export type SimObjectKeyframe = {
+	time     : number
+	position?: Vector3Type
+	rotation?: QuaternionType
+}
+
+export type SimObjectKeyframes = {
+	index    : number
+	label    : string
+	keyframes: SimObjectKeyframe[]
+}
+
+export type SimulationInput = {
+	position : Vector3Type
+	direction: Vector3Type
+	strength : number
+	duration : number
+	pinStates: boolean[]
+}
+
+/** Full keyframe set from physics (original) or after optimizer reduction (compressed). */
+export type SimulationResult = {
+	ballKeyframes : SimObjectKeyframes
+	pinsKeyframes : SimObjectKeyframes[]
+	finalPinStates: boolean[]
+	/** Wall time for this stage physics in `BowlingPhysicsSimulator.simulateRoll`, or compression in `compressSimulationResult`. */
+	computeTimeMs : number
+}
+
+export type SimulationComparison = {
+	original         : SimulationResult
+	compressed       : SimulationResult
+	finalPinStates   : boolean[]
+	startingPinStates: boolean[]
+}
+
+/** Keyframe optimizer only; not used by physics integration (see `SimulationSettings.velocityRestEpsilon` for sim early-stop). */
+export type OptimizationSettings = {
+	/**
+	 * When false, the keyframe reduction pipeline is skipped: “compressed” tracks are copies of the raw sim (see
+	 * `getSimulationResults` in `physics.client`). Physically ignored by the simulator; host-only.
+	 */
+	keyframeOptimizationEnabled      : boolean
+	/** Meters. Flat dedup (middle keyframe dropped if prev/mid/next equal within this for position, separate internal scale for quat in {@link keyframeRdp* }). */
+	keyframeReductionEpsilon         : number
+	/**
+	 * R–D–P: max perpendicular distance in space from each sample to the line through segment endpoints (m). Non-finite
+	 * or negative (e.g. `-1`) disables the position term in the combined score; rotation can still drive simplification.
+	 */
+	keyframeRdpMaxPositionErrorM     : number
+	/**
+	 * R–D–P: max **rotation** error vs slerp in time (°), shortest quat path. Use `-1` (or `Infinity`) to skip rotation RDP.
+	 */
+	keyframeRdpMaxRotationErrorDeg   : number
+	/**
+	 * Precontact anchor: min position delta (m) from the first materialized sample to count as “motion.” Use `-1`
+	 * to ignore position (use rotation only if that is not also `-1`).
+	 */
+	keyframePrecontactMotionMinPosM  : number
+	/**
+	 * Precontact anchor: min geodesic rotation (°) from t=0. `-1` = ignore rotation (position only). If **both** this
+	 * and {@link keyframePrecontactMotionMinPosM} are `-1`, the precontact anchor pass is skipped.
+	 */
+	keyframePrecontactMotionMinRotDeg: number
+}
+
+/** Physics backends and per-step recording (frame rate, masses, early-stop, etc.). */
+export type SimulationSettings = {
+	decimalPlaces                   : number
+	/** Squared linear velocity threshold for “at rest”; sim stops early after N quiet frames (see Cannon loop). */
+	velocityRestEpsilon             : number
+	simFrameRate                    : number
+	simSubSteps                     : number
+	simDuration                     : number
+	/** Stop sampling after this many consecutive frames with no significant body velocity. */
+	idleFrameCap                     : number
+	ballMass                        : number
+	ballFriction                    : number
+	ballRestitution                 : number
+	ballRadius                      : number
+	bowlSpeedMin                    : number
+	bowlSpeedMax                    : number
+	/** Overrides pin cylinder mass from collider data in the Cannon sim. */
+	pinMass                         : number
+	pinFriction                     : number
+	pinRestitution                  : number
+}
+
+/**
+ * Produces a full `SimulationResult` (ball + pin keyframes, final pin states) for one roll.
+ * Implement with Cannon-es, Rapier, etc. `optimizationSettings` is passed through so callers keep one pipeline shape;
+ * engines may ignore it if they do not apply optimizer tunables during sampling.
+ */
+export interface BowlingPhysicsSimulator {
+	simulateRoll(
+		input               : SimulationInput,
+		simulationSettings  : SimulationSettings,
+		optimizationSettings: OptimizationSettings,
+	): SimulationResult
+}

@@ -3,5 +3,5 @@ import BowlingSimVisualizer from './components/BowlingSimVisualizer.vue'
 </script>
 
 <template>
-  <BowlingSimVisualizer />
+	<BowlingSimVisualizer />
 </template>
