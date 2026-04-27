@@ -1,16 +1,5 @@
-import {
-	DEFAULT_STORED_ROTATION,
-	quaternionToStoredRotation,
-	storedRotationToQuaternion,
-} from './physics.utils'
-import type {
-	OptimizationSettings,
-	QuaternionType,
-	SimulationResult,
-	SimObjectKeyframe,
-	SimObjectKeyframes,
-	Vector3Type,
-} from './types'
+import { DEFAULT_STORED_ROTATION, quaternionToStoredRotation, storedRotationToQuaternion } from './physics.utils'
+import type { OptimizationSettings, QuaternionType, SimulationResult, SimObjectKeyframe, SimObjectKeyframes, Vector3Type } from './types'
 
 /**
  * `keyframeReductionEpsilon` is in **world units** (meters) for position. For rotation, stored Euler
