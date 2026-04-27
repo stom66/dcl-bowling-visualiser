@@ -1,13 +1,14 @@
-import type { QuaternionType, Vector3Type } from '@dcl/ecs'
+import type { Vector3Type } from '@dcl/ecs'
 
 /**
  * Single sample on a track; used by physics output and the keyframe optimizer.
- * Uses ECS schema vector / quaternion shapes (same as `Schemas.Vector3` / `Schemas.Quaternion` payloads).
+ * Position: `Schemas.Vector3`. `rotation`: Euler **degrees (x, y, z)**, not a quaternion — same convention as
+ * `Quaternion.toEulerAngles` / `fromEulerDegrees` in `@dcl/ecs-math` (three scalars on the wire).
  */
 export type SimObjectKeyframe = {
 	time     : number
 	position?: Vector3Type
-	rotation?: QuaternionType
+	rotation?: Vector3Type
 }
 
 export type SimObjectKeyframes = {
@@ -47,7 +48,7 @@ export type OptimizationSettings = {
 	 * `getSimulationResults` in `physics.client`). Physically ignored by the simulator; host-only.
 	 */
 	keyframeOptimizationEnabled      : boolean
-	/** Meters. Flat dedup (middle keyframe dropped if prev/mid/next equal within this for position, separate internal scale for quat in {@link keyframeRdp* }). */
+	/** Meters. Flat dedup: middle keyframe dropped if prev/mid/next equal for position, or equal for rotation (Euler) via quaternion round-trip. */
 	keyframeReductionEpsilon         : number
 	/**
 	 * R–D–P: max perpendicular distance in space from each sample to the line through segment endpoints (m). Non-finite

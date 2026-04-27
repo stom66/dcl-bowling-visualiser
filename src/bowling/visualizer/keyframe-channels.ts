@@ -8,7 +8,6 @@ export type ChannelKey =
 	| 'rotation.x'
 	| 'rotation.y'
 	| 'rotation.z'
-	| 'rotation.w'
 
 export function listKeyframeChannels(keyframe: SimObjectKeyframe): ChannelKey[] {
 	const channels: ChannelKey[] = []
@@ -18,7 +17,7 @@ export function listKeyframeChannels(keyframe: SimObjectKeyframe): ChannelKey[] 
 	}
 
 	if (keyframe.rotation) {
-		channels.push('rotation.x', 'rotation.y', 'rotation.z', 'rotation.w')
+		channels.push('rotation.x', 'rotation.y', 'rotation.z')
 	}
 
 	return channels

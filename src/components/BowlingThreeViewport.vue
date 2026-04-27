@@ -358,17 +358,28 @@ onMounted(() => {
 	const hemi = new THREE.HemisphereLight(0x9fb8ff, 0x1a1f2e, 0.9)
 	scene.add(hemi)
 
+	/**
+	 * Sim / DCL: right-handed, +Y up, +Z down-lane, +X to the bowler’s right. Cannon and `pin-colliders` use the same.
+	 * The top ortho camera’s `up.set(0,0,1)` (lane +Z = screen up) also maps **+worldX to the left of the top view**,
+	 * so ball +X looked “left” and pin 7 (−X) sat on the “right” in the top panel — a **view** mismatch, not Unity
+	 * vs DCL. Mirror lane content in X for display so +X in sim matches “right” on the triple view and the rack UI.
+	 */
+	const laneRoot = new THREE.Group()
+	laneRoot.name = 'LaneRootMirrorX'
+	laneRoot.scale.set(-1, 1, 1)
+	scene.add(laneRoot)
+
 	const deck = pinDeckCenter()
 	orbitTarget.copy(deck)
 
 	const grid = new THREE.GridHelper(24, 24, 0x334155, 0x1e293b)
 	grid.position.set(deck.x, 0.001, deck.z)
-	scene.add(grid)
+	laneRoot.add(grid)
 
 	ballGeometry = new THREE.SphereGeometry(ballRadius, 24, 24)
 	const ballMat = new THREE.MeshBasicMaterial({ color: 0x60a5fa })
 	const ball = new THREE.Mesh(ballGeometry, ballMat)
-	scene.add(ball)
+	laneRoot.add(ball)
 	ballMesh.value = ball
 
 	pinSharedGeometry = new THREE.CylinderGeometry(
@@ -381,7 +392,7 @@ onMounted(() => {
 	for (let i = 0; i < PIN_LANE_LOCAL_POSITIONS.length; i += 1) {
 		const mat = new THREE.MeshBasicMaterial({ color: pinHueHex(i) })
 		const mesh = new THREE.Mesh(pinSharedGeometry, mat)
-		scene.add(mesh)
+		laneRoot.add(mesh)
 		meshes.push(mesh)
 	}
 	pinMeshes.value = meshes
@@ -389,7 +400,7 @@ onMounted(() => {
 	colliderDebugRoot = new THREE.Group()
 	colliderDebugRoot.name = 'ColliderWireframes'
 	colliderDebugRoot.visible = showColliderWireframes.value
-	scene.add(colliderDebugRoot)
+	laneRoot.add(colliderDebugRoot)
 
 	let outlineSerial = 0
 	type LaneJsonEntry = {

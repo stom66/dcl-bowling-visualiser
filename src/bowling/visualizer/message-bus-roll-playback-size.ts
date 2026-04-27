@@ -2,7 +2,7 @@
  * Byte length for one authoritative-server roll playback message, matching the
  * pattern in dcl-bowling `room.ts`: envelope + `NOTIFY_PLAYER_ROLL_PLAYBACK`
  * body serialized with `@dcl/sdk` Schemas + `ReadWriteByteBuffer`, plus the
- * custom-event wrapper byte.
+ * custom-event wrapper byte. Keyframe `rotation` is `Schemas.Vector3` (Euler degrees, see `SimObjectKeyframe`).
  *
  * Chart “JSON bytes” (UTF-8 length of `JSON.stringify` per keyframe) live in
  * `./keyframe-json-footprint.ts` — a different metric from this wire serialization.
@@ -41,7 +41,7 @@ const rollReplayPayloadSchema = Schemas.Map({
 			Schemas.Map({
 				time: Schemas.Number,
 				position: Schemas.Optional(Schemas.Vector3),
-				rotation: Schemas.Optional(Schemas.Quaternion),
+				rotation: Schemas.Optional(Schemas.Vector3),
 			}),
 		),
 	}),
@@ -52,7 +52,7 @@ const rollReplayPayloadSchema = Schemas.Map({
 				Schemas.Map({
 					time: Schemas.Number,
 					position: Schemas.Optional(Schemas.Vector3),
-					rotation: Schemas.Optional(Schemas.Quaternion),
+					rotation: Schemas.Optional(Schemas.Vector3),
 				}),
 			),
 		}),
@@ -81,23 +81,18 @@ export const DEFAULT_ROLL_PLAYBACK_WIRE_META: RollPlaybackWireMeta = {
 function keyframeToWire(kf: SimObjectKeyframe): {
 	time: number
 	position?: { x: number; y: number; z: number }
-	rotation?: { x: number; y: number; z: number; w: number }
+	rotation?: { x: number; y: number; z: number }
 } {
 	const out: {
 		time: number
 		position?: { x: number; y: number; z: number }
-		rotation?: { x: number; y: number; z: number; w: number }
+		rotation?: { x: number; y: number; z: number }
 	} = { time: kf.time }
 	if (kf.position !== undefined) {
 		out.position = { x: kf.position.x, y: kf.position.y, z: kf.position.z }
 	}
 	if (kf.rotation !== undefined) {
-		out.rotation = {
-			x: kf.rotation.x,
-			y: kf.rotation.y,
-			z: kf.rotation.z,
-			w: kf.rotation.w,
-		}
+		out.rotation = { x: kf.rotation.x, y: kf.rotation.y, z: kf.rotation.z }
 	}
 	return out
 }

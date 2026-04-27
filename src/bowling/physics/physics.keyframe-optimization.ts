@@ -1,3 +1,8 @@
+import {
+	DEFAULT_STORED_ROTATION,
+	quaternionToStoredRotation,
+	storedRotationToQuaternion,
+} from '../math/rotation-encoding'
 import type {
 	OptimizationSettings,
 	QuaternionType,
@@ -8,8 +13,9 @@ import type {
 } from '../types'
 
 /**
- * `keyframeReductionEpsilon` is in **world units** (meters) for position. Quaternion similarity uses
- * `1 - |dot(q1,q2)|` (0…1, sign-agnostic for double-cover). Reusing the same number as for meters
+ * `keyframeReductionEpsilon` is in **world units** (meters) for position. For rotation, stored Euler
+ * (degrees) is compared via the geodesic quaternion distance after `fromEulerDegrees` — same
+ * `1 - |dot(q1,q2)|` scale. Reusing the same number as for meters
  * (e.g. 0.002) treats ~5–7° differences as "equal" and drops real rotation changes from keyframes.
  */
 const KEYFRAME_QUAT_ONE_MINUS_ABS_DOT = 1e-4
@@ -40,12 +46,12 @@ export function removeRedundantKeyframes(
 			!previousKeyframe?.rotation ||
 			!nextKeyframe?.rotation ||
 			!keyframe.rotation ||
-			!areQuatEqual(
+			!areStoredRotationsEqual(
 				previousKeyframe.rotation,
 				keyframe.rotation,
 				KEYFRAME_QUAT_ONE_MINUS_ABS_DOT,
 			) ||
-			!areQuatEqual(
+			!areStoredRotationsEqual(
 				keyframe.rotation,
 				nextKeyframe.rotation,
 				KEYFRAME_QUAT_ONE_MINUS_ABS_DOT,
@@ -104,7 +110,7 @@ function rdpSimplifyToSparseSamples(
 			{
 				time    : s.time,
 				position: { ...s.position },
-				rotation: { ...s.rotation },
+				rotation: quaternionToStoredRotation(s.rotation),
 			},
 		]
 	}
@@ -116,7 +122,7 @@ function rdpSimplifyToSparseSamples(
 				({
 					time    : s.time,
 					position: { ...s.position },
-					rotation: { ...s.rotation },
+					rotation: quaternionToStoredRotation(s.rotation),
 				}) as SimObjectKeyframe,
 		)
 	}
@@ -167,12 +173,7 @@ function rdpSimplifyToSparseSamples(
 				kf.position = { x: s.position.x, y: s.position.y, z: s.position.z }
 			}
 			if (keepRot.has(i)) {
-				kf.rotation = {
-					x: s.rotation.x,
-					y: s.rotation.y,
-					z: s.rotation.z,
-					w: s.rotation.w,
-				}
+				kf.rotation = quaternionToStoredRotation(s.rotation)
 			}
 			return kf
 		},
@@ -290,7 +291,7 @@ function injectPrecontactRestAnchorForPinTrack(
 	const anchor: SimObjectKeyframe = {
 		time    : tPre,
 		position: { x: pre.position.x, y: pre.position.y, z: pre.position.z },
-		rotation: { x: pre.rotation.x, y: pre.rotation.y, z: pre.rotation.z, w: pre.rotation.w },
+		rotation: quaternionToStoredRotation(pre.rotation),
 	}
 	const keys = compressed.keyframes
 	let match   = -1
@@ -311,12 +312,7 @@ function injectPrecontactRestAnchorForPinTrack(
 				y: pre.position.y,
 				z: pre.position.z,
 			},
-			rotation: {
-				x: pre.rotation.x,
-				y: pre.rotation.y,
-				z: pre.rotation.z,
-				w: pre.rotation.w,
-			},
+			rotation: quaternionToStoredRotation(pre.rotation),
 		}
 		// If merge target had time-only, keep; we always set full pos+rot.
 		const copy = keys.slice()
@@ -368,6 +364,18 @@ function areQuatEqual(
 	return 1 - Math.abs(dot) <= epsilon
 }
 
+function areStoredRotationsEqual(
+	left    : Vector3Type,
+	right   : Vector3Type,
+	epsilon : number,
+): boolean {
+	return areQuatEqual(
+		normalizeQuat(storedRotationToQuaternion(left)),
+		normalizeQuat(storedRotationToQuaternion(right)),
+		epsilon,
+	)
+}
+
 // MARK: RDP intern
 
 function isRdpChannelEnabled(tolerance: number): boolean {
@@ -382,18 +390,20 @@ function materializeRdpFromKeyframes(
 		return []
 	}
 	let position = keyframes.find((k) => k.position)?.position ?? { x: 0, y: 0, z: 0 }
-	let rotation = keyframes.find((k) => k.rotation)?.rotation ?? { ...IDENTITY_QUAT }
+	let rotationStored: Vector3Type = keyframes.find((k) => k.rotation)?.rotation ?? {
+		...DEFAULT_STORED_ROTATION,
+	}
 	const base = keyframes.map((kf) => {
 		if (kf.position) {
 			position = kf.position
 		}
 		if (kf.rotation) {
-			rotation = kf.rotation
+			rotationStored = kf.rotation
 		}
 		return {
 			time    : kf.time,
 			position: { x: position.x, y: position.y, z: position.z },
-			rotation: normalizeQuat(rotation),
+			rotation: normalizeQuat(storedRotationToQuaternion(rotationStored)),
 		}
 	})
 	unwrapQuaternionHemisphere(base)

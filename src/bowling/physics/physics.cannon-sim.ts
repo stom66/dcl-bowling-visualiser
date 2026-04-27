@@ -3,6 +3,7 @@ import { Body, Box, Cylinder, Material, Quaternion as CannonQuaternion, Sphere, 
 import laneCollidersData from '../data/lane-colliders.json'
 import pinCollidersData from '../data/pin-colliders.json'
 import { GameSettings, type SimulationSettings } from './physics.settings'
+import { quaternionToStoredRotation, storedRotationToQuaternion } from '../math/rotation-encoding'
 import type { QuaternionType, SimulationResult, SimObjectKeyframe, Vector3Type } from '../types'
 import { Quaternion, Vector3 } from '@dcl/sdk/math'
 
@@ -209,7 +210,10 @@ export class CannonSim {
 			result.ballKeyframes.keyframes.push({
 				time    : this.world.time,
 				position: roundVec3(step.ball.position, this.settings.decimalPlaces),
-				rotation: roundQuat(step.ball.rotation, this.settings.decimalPlaces),
+				rotation: roundVec3(
+					quaternionToStoredRotation(step.ball.rotation),
+					this.settings.decimalPlaces,
+				),
 			})
 
 			if (lengthSquared(step.ball.velocity) > this.settings.velocityRestEpsilon) {
@@ -225,7 +229,10 @@ export class CannonSim {
 				const keyframe: SimObjectKeyframe = {
 					time    : this.world.time,
 					position: roundVec3(pin.position, this.settings.decimalPlaces),
-					rotation: roundQuat(pin.rotation, this.settings.decimalPlaces),
+					rotation: roundVec3(
+						quaternionToStoredRotation(pin.rotation),
+						this.settings.decimalPlaces,
+					),
 				}
 				track.keyframes.push(keyframe)
 
@@ -242,12 +249,16 @@ export class CannonSim {
 
 		for (const track of result.pinsKeyframes) {
 			const lastKeyframe = track.keyframes.at(-1)
+			const lastQuat =
+				lastKeyframe?.rotation !== undefined
+					? storedRotationToQuaternion(lastKeyframe.rotation)
+					: undefined
 			result.finalPinStates[track.index] = Boolean(
 				lastKeyframe?.position && 
 				lastKeyframe.position.y >= 0.2 &&
 
-				lastKeyframe.rotation &&
-				Math.abs(Quaternion.dot(lastKeyframe.rotation, UPRIGHT_PIN_QUATERNION)) > 0.95
+				lastQuat &&
+				Math.abs(Quaternion.dot(lastQuat, UPRIGHT_PIN_QUATERNION)) > 0.95
 			)
 		}
 
@@ -320,15 +331,3 @@ function roundVec3(
 	}
 }
 
-function roundQuat(
-	quaternion    : QuaternionType,
-	decimalPlaces : number,
-): QuaternionType {
-	const factor = 10 ** decimalPlaces
-	return {
-		x: Math.round(quaternion.x * factor) / factor,
-		y: Math.round(quaternion.y * factor) / factor,
-		z: Math.round(quaternion.z * factor) / factor,
-		w: Math.round(quaternion.w * factor) / factor,
-	}
-}

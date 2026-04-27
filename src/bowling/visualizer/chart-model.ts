@@ -54,10 +54,9 @@ export const CHANNEL_OPTIONS: Array<{ value: ChannelKey; label: string }> = [
 	{ value: 'position.x', label: 'Position X' },
 	{ value: 'position.y', label: 'Position Y' },
 	{ value: 'position.z', label: 'Position Z' },
-	{ value: 'rotation.x', label: 'Rotation X' },
-	{ value: 'rotation.y', label: 'Rotation Y' },
-	{ value: 'rotation.z', label: 'Rotation Z' },
-	{ value: 'rotation.w', label: 'Rotation W' },
+	{ value: 'rotation.x', label: 'Rotation X (°)' },
+	{ value: 'rotation.y', label: 'Rotation Y (°)' },
+	{ value: 'rotation.z', label: 'Rotation Z (°)' },
 ]
 
 export function buildSimulationChartModel(comparison: SimulationComparison): SimulationChartModel {
@@ -220,8 +219,6 @@ function getChannelValue(keyframe: SimObjectKeyframe, channel: ChannelKey): numb
 			return keyframe.rotation?.y
 		case 'rotation.z':
 			return keyframe.rotation?.z
-		case 'rotation.w':
-			return keyframe.rotation?.w
 	}
 }
 

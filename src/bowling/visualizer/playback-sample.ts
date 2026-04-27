@@ -1,3 +1,4 @@
+import { storedRotationToQuaternion } from '../math/rotation-encoding'
 import type {
 	QuaternionType,
 	SimulationResult,
@@ -28,7 +29,7 @@ function materializeKeyframes(
 			posAnchors.push({ time: kf.time, p: kf.position })
 		}
 		if (kf.rotation) {
-			rotAnchors.push({ time: kf.time, q: kf.rotation })
+			rotAnchors.push({ time: kf.time, q: storedRotationToQuaternion(kf.rotation) })
 		}
 	}
 	const defP = posAnchors[0]?.p ?? { x: 0, y: 0, z: 0 }

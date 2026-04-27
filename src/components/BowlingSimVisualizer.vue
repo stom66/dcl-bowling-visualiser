@@ -64,14 +64,14 @@ const form = reactive({
 })
 
 /**
- * Aim yaw in degrees around world +Y; 0° = straight ahead (+Z).
- * Slider / sim use `directionYawDeg` consistently; the optional top-down SVG uses the same angle when visible.
+ * Aim yaw in degrees, right-hand about +Y: 0° = (0, 0, 1) straight +Z; +90° = (1, 0, 0) +X; +45° ≈ (0.707, 0, 0.707) normalized.
+ * The slider and top-down SVG use the same θ as `form.direction` in the XZ plane.
  */
 const DIRECTION_YAW_MIN = -15
 const DIRECTION_YAW_MAX = 15
 
 function yawDegFromDirectionXz(d: { x: number; z: number }): number {
-	return (-(Math.atan2(d.x, d.z) * 180) / Math.PI)
+	return (Math.atan2(d.x, d.z) * 180) / Math.PI
 }
 
 function clampDirectionYaw(deg: number): number {
@@ -81,7 +81,7 @@ function clampDirectionYaw(deg: number): number {
 function applyYawDegToForm(deg: number): void {
 	const clamped = clampDirectionYaw(deg)
 	const rad = (clamped * Math.PI) / 180
-	form.direction.x = -Math.sin(rad)
+	form.direction.x = Math.sin(rad)
 	form.direction.y = 0
 	form.direction.z = Math.cos(rad)
 }
@@ -108,6 +108,13 @@ const showAimCompass = ref(false)
 
 function toggleAimCompass(): void {
 	showAimCompass.value = !showAimCompass.value
+}
+
+/** When true, show full X, Y, Z numeric fields (default: compact X range slider only). */
+const showPositionAxes = ref(false)
+
+function togglePositionAxes(): void {
+	showPositionAxes.value = !showPositionAxes.value
 }
 
 const directionSvgRef = ref<SVGSVGElement | null>(null)
@@ -239,7 +246,6 @@ const axisToggles = reactive({
 	rotationX: false,
 	rotationY: false,
 	rotationZ: false,
-	rotationW: false,
 })
 
 const AXIS_CHANNEL_ORDER: ChannelKey[] = [
@@ -249,7 +255,6 @@ const AXIS_CHANNEL_ORDER: ChannelKey[] = [
 	'rotation.x',
 	'rotation.y',
 	'rotation.z',
-	'rotation.w',
 ]
 
 const CHANNEL_TO_AXIS_TOGGLE: Record<ChannelKey, keyof typeof axisToggles> = {
@@ -259,7 +264,6 @@ const CHANNEL_TO_AXIS_TOGGLE: Record<ChannelKey, keyof typeof axisToggles> = {
 	'rotation.x': 'rotationX',
 	'rotation.y': 'rotationY',
 	'rotation.z': 'rotationZ',
-	'rotation.w': 'rotationW',
 }
 
 const activeChannels = computed((): ChannelKey[] =>
@@ -492,7 +496,6 @@ function resetDefaults(): void {
 	axisToggles.rotationX = false
 	axisToggles.rotationY = false
 	axisToggles.rotationZ = false
-	axisToggles.rotationW = false
 	runSimulation()
 }
 
@@ -557,8 +560,6 @@ function channelHueBase(channel: ChannelKey): number {
 		case 'position.z':
 		case 'rotation.z':
 			return 218
-		case 'rotation.w':
-			return 285
 		default:
 			return 200
 	}
@@ -649,9 +650,43 @@ const sectionOpen = reactive({
 					</div>
 
 					<div class="field-grid">
-						<div class="field-span-2 position-one-line">
-							<span class="position-one-line-title">Position</span>
-							<div class="position-one-line-inputs">
+						<div class="field-span-2 position-field">
+							<span class="position-field-heading">Position</span>
+							<div class="position-x-control-row">
+								<div class="position-slider-row">
+									<input
+										v-model.number="form.position.x"
+										type="range"
+										min="-1"
+										max="1"
+										step="0.01"
+										aria-label="Ball X position, −1 to 1"
+										title="Horizontal (X) position, −1 to 1"
+									/>
+								</div>
+								<input
+									v-model.number="form.position.x"
+									class="position-x-num"
+									type="number"
+									min="-1"
+									max="1"
+									step="0.01"
+									aria-label="X position (current value)"
+									title="Current X, −1 to 1"
+								/>
+								<button
+									type="button"
+									class="axis-toggle-btn position-axes-toggle"
+									:class="{ 'axis-toggle-btn--on': showPositionAxes }"
+									:aria-pressed="showPositionAxes"
+									:aria-label="showPositionAxes ? 'Hide X, Y, Z position' : 'Show X, Y, Z position'"
+									:title="showPositionAxes ? 'Hide X, Y, Z' : 'Show X, Y, Z'"
+									@click="togglePositionAxes"
+								>
+									<i class="fa-solid fa-sliders" aria-hidden="true" />
+								</button>
+							</div>
+							<div v-show="showPositionAxes" class="position-axes-inputs">
 								<label>
 									<span>X</span>
 									<input v-model.number="form.position.x" type="number" step="0.01" />
@@ -717,7 +752,7 @@ const sectionOpen = reactive({
 									:min="DIRECTION_YAW_MIN"
 									:max="DIRECTION_YAW_MAX"
 									step="0.1"
-									title="Degrees from straight +Z"
+									title="Yaw about +Y: 0° = +Z, +° → +X. Range ±15° for a typical throw."
 								/>
 							</div>
 							<div class="direction-nudges" role="group" aria-label="Adjust aim by degrees">
@@ -905,7 +940,7 @@ const sectionOpen = reactive({
 								type="number"
 								min="0"
 								step="0.001"
-								title="Per-axis position equality (m) after RDP; quaternion flat-dedup uses a fixed internal scale."
+								title="Per-axis position equality (m) after RDP; rotation (Euler°) is compared as quaternion after fromEulerDegrees using the same internal scale."
 								@change="runSimulation"
 							/>
 						</label>
@@ -949,7 +984,7 @@ const sectionOpen = reactive({
 								type="number"
 								min="-1"
 								step="0.05"
-								title="Precontact: min quaternion angle vs t=0. −1 = ignore rotation (position only). If both this and the previous field are −1, the anchor pass is off."
+								title="Precontact: min geodesic rotation (°) vs t=0 (slerp path, same as RDP). −1 = ignore rotation (position only). If both this and the previous field are −1, the anchor pass is off."
 								@change="runSimulation"
 							/>
 						</label>
@@ -1036,15 +1071,6 @@ const sectionOpen = reactive({
 							>
 								Z
 							</button>
-							<button
-								type="button"
-								class="axis-toggle-btn"
-								:class="{ 'axis-toggle-btn--on': axisToggles.rotationW }"
-								:aria-pressed="axisToggles.rotationW"
-								@click="axisToggles.rotationW = !axisToggles.rotationW"
-							>
-								W
-							</button>
 						</div>
 					</div>
 					</div>
@@ -1064,10 +1090,6 @@ const sectionOpen = reactive({
 						</button>
 					</div>
 					<div v-show="sectionOpen.visibilityPanel" id="panel-visibility" class="panel-collapsible">
-					<p class="visibility-help">
-						Rows toggle ball or pin traces (original vs compressed). Pin circles match the initial rack style; only
-						pins from the last run are affected. Set the simulated rack under Simulation Inputs.
-					</p>
 
 					<div class="visibility-layout">
 						<div class="visibility-btn-row" role="group" aria-label="Ball trace visibility">
@@ -1505,38 +1527,64 @@ button {
 	min-width: 0;
 }
 
-.position-one-line {
+.position-field {
 	display: flex;
-	flex-wrap: nowrap;
-	align-items: flex-end;
-	gap: 14px;
+	flex-direction: column;
+	gap: 8px;
 	min-width: 0;
 }
 
-.position-one-line-title {
-	flex: 0 0 auto;
+.position-field-heading {
+	display: block;
 	color: #a7b1c2;
 	font-size: 0.92rem;
-	padding-bottom: 10px;
 	white-space: nowrap;
 }
 
-.position-one-line-inputs {
+.position-x-control-row {
 	display: flex;
-	flex: 1;
+	flex-wrap: nowrap;
+	align-items: center;
 	gap: 10px;
+	width: 100%;
 	min-width: 0;
 }
 
-.position-one-line-inputs label {
+.position-slider-row {
+	flex: 1;
+	min-width: 0;
+}
+
+.position-slider-row input[type='range'] {
+	width: 100%;
+}
+
+.position-x-num {
+	width: 4.75rem;
+	flex-shrink: 0;
+}
+
+.position-axes-toggle {
+	flex-shrink: 0;
+}
+
+.position-axes-inputs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	padding: 4px 0 2px;
+	border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.position-axes-inputs label {
 	display: grid;
 	gap: 6px;
 	flex: 1;
-	min-width: 0;
+	min-width: 5.5rem;
 	font-size: 0.92rem;
 }
 
-.position-one-line-inputs label span {
+.position-axes-inputs label span {
 	color: #a7b1c2;
 }
 
