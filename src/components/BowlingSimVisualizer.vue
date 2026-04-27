@@ -17,7 +17,7 @@ import { PIN_LANE_LOCAL_POSITIONS } from '../bowling/physics/physics.cannon-sim'
 import { DEFAULT_SIMULATION_INPUT, getSimulationResults } from '../bowling/physics/physics.client'
 import { DefaultOptimizationSettings, GameSettings } from '../bowling/physics/physics.settings'
 import type { ChannelKey } from '../bowling/visualizer/keyframe-channels'
-import type { OptimizationSettings, SimulationInput, SimulationSettings } from '../bowling/types'
+import type { OptimizationSettings, SimulationInput, SimulationSettings } from '../bowling/physics/types'
 import { estimateRollPlaybackWireSizes } from '../bowling/visualizer/message-bus-roll-playback-size'
 import BowlingThreeViewport from './BowlingThreeViewport.vue'
 
@@ -59,6 +59,7 @@ const form = reactive({
 	position : { ...DEFAULT_SIMULATION_INPUT.position },
 	direction: { ...DEFAULT_SIMULATION_INPUT.direction },
 	strength : DEFAULT_SIMULATION_INPUT.strength,
+	spin     : DEFAULT_SIMULATION_INPUT.spin,
 	duration : DEFAULT_SIMULATION_INPUT.duration,
 	pinStates: [...DEFAULT_SIMULATION_INPUT.pinStates],
 })
@@ -115,6 +116,11 @@ const showPositionAxes = ref(false)
 
 function togglePositionAxes(): void {
 	showPositionAxes.value = !showPositionAxes.value
+}
+
+function toggleLaneBumpers(): void {
+	tuning.laneBumpersEnabled = !tuning.laneBumpersEnabled
+	runSimulation()
 }
 
 const directionSvgRef = ref<SVGSVGElement | null>(null)
@@ -189,9 +195,11 @@ const tuning = reactive({
 	ballMass: GameSettings.ballMass,
 	ballFriction: GameSettings.ballFriction,
 	ballRestitution: GameSettings.ballRestitution,
+	maxAngularVelocity: GameSettings.maxAngularVelocity,
 	pinMass: GameSettings.pinMass,
 	pinFriction: GameSettings.pinFriction,
 	pinRestitution: GameSettings.pinRestitution,
+	laneBumpersEnabled: GameSettings.laneBumpersEnabled,
 	keyframeReductionEpsilon: DefaultOptimizationSettings.keyframeReductionEpsilon,
 	keyframeRdpMaxPositionErrorM: DefaultOptimizationSettings.keyframeRdpMaxPositionErrorM,
 	keyframeRdpMaxRotationErrorDeg: DefaultOptimizationSettings.keyframeRdpMaxRotationErrorDeg,
@@ -208,9 +216,11 @@ function tuningSimulationOverrides(): Partial<SimulationSettings> {
 		ballMass: tuning.ballMass,
 		ballFriction: tuning.ballFriction,
 		ballRestitution: tuning.ballRestitution,
+		maxAngularVelocity: tuning.maxAngularVelocity,
 		pinMass: tuning.pinMass,
 		pinFriction: tuning.pinFriction,
 		pinRestitution: tuning.pinRestitution,
+		laneBumpersEnabled: tuning.laneBumpersEnabled,
 	}
 }
 
@@ -456,6 +466,7 @@ function currentInput(): SimulationInput {
 		position: { ...form.position },
 		direction: { ...form.direction },
 		strength: form.strength,
+		spin: form.spin,
 		duration: form.duration,
 		pinStates: Array.from({ length: PIN_LANE_LOCAL_POSITIONS.length }, (_, i) => Boolean(form.pinStates[i])),
 	}
@@ -466,6 +477,7 @@ function resetDefaults(): void {
 	Object.assign(form.direction, DEFAULT_SIMULATION_INPUT.direction)
 	directionYawDeg.value = clampDirectionYaw(yawDegFromDirectionXz(form.direction))
 	form.strength = DEFAULT_SIMULATION_INPUT.strength
+	form.spin = DEFAULT_SIMULATION_INPUT.spin
 	form.duration = DEFAULT_SIMULATION_INPUT.duration
 	for (let i = 0; i < DEFAULT_SIMULATION_INPUT.pinStates.length; i += 1) {
 		form.pinStates[i] = DEFAULT_SIMULATION_INPUT.pinStates[i] ?? true
@@ -477,9 +489,11 @@ function resetDefaults(): void {
 	tuning.ballMass = GameSettings.ballMass
 	tuning.ballFriction = GameSettings.ballFriction
 	tuning.ballRestitution = GameSettings.ballRestitution
+	tuning.maxAngularVelocity = GameSettings.maxAngularVelocity
 	tuning.pinMass = GameSettings.pinMass
 	tuning.pinFriction = GameSettings.pinFriction
 	tuning.pinRestitution = GameSettings.pinRestitution
+	tuning.laneBumpersEnabled = GameSettings.laneBumpersEnabled
 	tuning.keyframeReductionEpsilon = DefaultOptimizationSettings.keyframeReductionEpsilon
 	tuning.keyframeRdpMaxPositionErrorM = DefaultOptimizationSettings.keyframeRdpMaxPositionErrorM
 	tuning.keyframeRdpMaxRotationErrorDeg = DefaultOptimizationSettings.keyframeRdpMaxRotationErrorDeg
@@ -504,7 +518,13 @@ const KEYFRAME_MARKER_SIZE = 7
 /** Full `setOption` replace: avoids stale series/grids when axes or visibility change shape. */
 const CHART_SET_OPTION_OPTS = { notMerge: true as const }
 
-function toEchartsSeries(series: ChartSeries, channel: ChannelKey) {
+
+// MARK: toEchartsSeries
+/** Maps a chart series to the ECharts line + scatter series pair for one axis channel. */
+function toEchartsSeries(
+	series  : ChartSeries,
+	channel : ChannelKey,
+) {
 	const color = seriesColorForChannel(channel, series.entityKind, series.entityIndex, series.dataset)
 	const legendName = `${series.name} · ${channelLabel(channel)}`
 
@@ -548,6 +568,8 @@ function toEchartsSeries(series: ChartSeries, channel: ChannelKey) {
 	]
 }
 
+
+// MARK: channelHueBase
 /** Central hue (°) for axis channel: X → red, Y → green, Z → blue; W uses violet. */
 function channelHueBase(channel: ChannelKey): number {
 	switch (channel) {
@@ -565,6 +587,8 @@ function channelHueBase(channel: ChannelKey): number {
 	}
 }
 
+
+// MARK: seriesColorForChannel
 /**
  * Color by which axis row you are in (RGB for x/y/z), with lightness/saturation shifts so ball vs pins and
  * original vs compressed stay distinguishable within the same subplot.
@@ -598,6 +622,9 @@ function seriesColorForChannel(
 	return `hsla(${hue}, ${Math.max(48, sat)}%, ${Math.min(68, Math.max(40, light))}%, ${alpha})`
 }
 
+
+// MARK: formatBytes
+/** Human-readable byte size for the message-bus wire estimate strip. */
 function formatBytes(bytes: number): string {
 	if (bytes < 1024) {
 		return `${bytes} B`
@@ -715,9 +742,51 @@ const sectionOpen = reactive({
 								/>
 							</div>
 						</label>
+						<label class="field-span-2 spin-field">
+							<span>Spin (Y)</span>
+							<div class="spin-inline">
+								<input
+									v-model.number="form.spin"
+									type="range"
+									min="-1"
+									max="1"
+									step="0.01"
+									aria-label="Spin about Y, −1 to 1"
+									title="Initial angular velocity about +Y, scaled by max angular velocity in Materials"
+								/>
+								<input
+									v-model.number="form.spin"
+									class="spin-num"
+									type="number"
+									min="-1"
+									max="1"
+									step="0.01"
+									aria-label="Spin (current value)"
+									title="Spin −1…+1 (× max angular velocity, rad/s at ±1)"
+								/>
+							</div>
+						</label>
 
 						<div class="field-span-2 initial-rack-field">
-							<h2>Initial pin rack</h2>
+							<div class="initial-rack-heading-row">
+								<h2>Initial pin rack</h2>
+								<button
+									type="button"
+									class="loop-toggle sim-panel-toggle"
+									:class="{ 'loop-toggle--on': tuning.laneBumpersEnabled }"
+									:aria-pressed="tuning.laneBumpersEnabled"
+									aria-label="Lane bumpers: include gutter bumper colliders in Cannon physics"
+									title="Enables bumper colliders in the sim; orange Outlines in 3D playback when Outlines is on"
+									@click="toggleLaneBumpers"
+								>
+									<i
+										class="fa-solid"
+										:class="tuning.laneBumpersEnabled ? 'fa-check' : 'fa-xmark'"
+										aria-hidden="true"
+									/>
+									<span class="loop-toggle-label">Lane bumpers</span>
+								</button>
+							</div>
 							<div class="pin-rack-triangle" role="group" aria-label="Pins present at start of simulation">
 								<div v-for="(row, rowIndex) in PIN_RACK_ROWS" :key="rowIndex" class="pin-rack-row">
 									<label v-for="pinIndex in row" :key="pinIndex" class="pin-rack-cell">
@@ -896,6 +965,16 @@ const sectionOpen = reactive({
 										title="Cannon material restitution (bounce) on the ball."
 									/>
 								</label>
+								<label>
+									<span>Max angular velocity (Y, rad/s)</span>
+									<input
+										v-model.number="tuning.maxAngularVelocity"
+										type="number"
+										min="0"
+										step="0.5"
+										title="Scales the Spin slider: at ±1, initial ωy = ± this value. 0 disables spin effect."
+									/>
+								</label>
 							</div>
 							<div class="materials-col" role="group" aria-label="Pins">
 								<label>
@@ -905,7 +984,7 @@ const sectionOpen = reactive({
 										type="number"
 										min="0.01"
 										step="0.05"
-										title="Pin body mass; overrides pin-colliders.json cylinder mass in the Cannon sim."
+										title="Pin body mass; overrides physics/colliders/pin-colliders.json cylinder mass in the Cannon sim."
 									/>
 								</label>
 								<label>
@@ -916,7 +995,7 @@ const sectionOpen = reactive({
 										min="0"
 										max="1"
 										step="0.01"
-										title="Pin material friction; overrides pin-colliders.json in the Cannon sim."
+										title="Pin material friction; overrides physics/colliders/pin-colliders.json in the Cannon sim."
 									/>
 								</label>
 								<label>
@@ -927,7 +1006,7 @@ const sectionOpen = reactive({
 										min="0"
 										max="1"
 										step="0.01"
-										title="Pin material restitution; overrides pin-colliders.json in the Cannon sim."
+										title="Pin material restitution; overrides physics/colliders/pin-colliders.json in the Cannon sim."
 									/>
 								</label>
 							</div>
@@ -1216,6 +1295,7 @@ const sectionOpen = reactive({
 							hide-intro-heading
 							:comparison="comparison"
 							:enabled-pins="visibility.enabledPins"
+							:lane-bumpers-enabled="tuning.laneBumpersEnabled"
 							:starting-pin-states="comparison.startingPinStates"
 						/>
 					</div>
@@ -1588,18 +1668,21 @@ button {
 	color: #a7b1c2;
 }
 
-.strength-field .strength-inline {
+.strength-field .strength-inline,
+.spin-field .spin-inline {
 	display: flex;
 	gap: 12px;
 	align-items: center;
 }
 
-.strength-field .strength-inline input[type='range'] {
+.strength-field .strength-inline input[type='range'],
+.spin-field .spin-inline input[type='range'] {
 	flex: 1;
 	min-width: 0;
 }
 
-.strength-num {
+.strength-num,
+.spin-num {
 	width: 4.25rem;
 	flex-shrink: 0;
 }
@@ -1608,6 +1691,54 @@ button {
 	display: grid;
 	gap: 10px;
 	margin-top: 0;
+}
+
+.initial-rack-heading-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px 16px;
+}
+
+.initial-rack-heading-row h2 {
+	margin: 0;
+}
+
+.sim-panel-toggle {
+	flex-shrink: 0;
+}
+
+.loop-toggle {
+	display: inline-flex;
+	gap: 8px;
+	align-items: center;
+	border: 1px solid rgba(148, 163, 184, 0.28);
+	border-radius: 10px;
+	padding: 8px 12px;
+	cursor: pointer;
+	font: inherit;
+	color: #cbd5e1;
+	background: rgba(15, 23, 42, 0.65);
+	transition:
+		background 0.15s ease,
+		border-color 0.15s ease,
+		color 0.15s ease;
+}
+
+.loop-toggle:hover {
+	border-color: rgba(56, 189, 248, 0.45);
+	color: #e2e8f0;
+}
+
+.loop-toggle--on {
+	border-color: rgba(56, 189, 248, 0.65);
+	background: rgba(14, 165, 233, 0.18);
+	color: #7dd3fc;
+}
+
+.loop-toggle-label {
+	font-size: 0.88rem;
 }
 
 .initial-rack-label {

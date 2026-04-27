@@ -1,11 +1,18 @@
+import { Quaternion, Vector3 } from '@dcl/sdk/math'
 import { Body, Box, Cylinder, Material, Quaternion as CannonQuaternion, Sphere, Vec3 as CannonVec3, World } from 'cannon-es'
 
-import laneCollidersData from '../data/lane-colliders.json'
-import pinCollidersData from '../data/pin-colliders.json'
-import { GameSettings, type SimulationSettings } from './physics.settings'
-import { quaternionToStoredRotation, storedRotationToQuaternion } from '../math/rotation-encoding'
-import type { QuaternionType, SimulationResult, SimObjectKeyframe, Vector3Type } from '../types'
-import { Quaternion, Vector3 } from '@dcl/sdk/math'
+import bumperCollidersData from './colliders/bumper-colliders.json'
+import laneCollidersData from './colliders/lane-colliders.json'
+import pinCollidersData from './colliders/pin-colliders.json'
+import { GameSettings } from './physics.settings'
+import type { SimulationSettings } from './types'
+import {
+	lengthSquared,
+	quaternionToStoredRotation,
+	roundVec3,
+	storedRotationToQuaternion,
+} from './physics.utils'
+import type { QuaternionType, SimulationResult, SimObjectKeyframe, Vector3Type } from './types'
 
 export type CannonSimObjectState = {
 	id      : number
@@ -19,7 +26,7 @@ export type CannonSimAdvanceResult = {
 	pins: CannonSimObjectState[]
 }
 
-interface LaneColliderEntry {
+interface BoxColliderEntry {
 	obj_name   : string
 	position   : [number, number, number]
 	type       : string
@@ -42,18 +49,68 @@ interface PinColliderFile {
 		restitution : number
 		mass        : number
 	}
-	positions: number[][]
+	positions : number[][]
 }
 
-const laneColliders = laneCollidersData as LaneColliderEntry[]
-const pinConfig     = pinCollidersData as PinColliderFile
+const bumperColliders = bumperCollidersData as BoxColliderEntry[]
+const laneColliders   = laneCollidersData as BoxColliderEntry[]
+const pinConfig       = pinCollidersData as PinColliderFile
 
-/** Rack rest positions (lane-local); same source as pin cylinder config in `pin-colliders.json`. */
+
+// MARK: addStaticBoxCollidersToWorld
+function addStaticBoxCollidersToWorld(
+	world     : World,
+	colliders : BoxColliderEntry[],
+): void {
+	for (const collider of colliders) {
+		if (collider.shape !== 'BOX') {
+			continue
+		}
+
+		const material = new Material({
+			friction   : collider.friction,
+			restitution: collider.restitution,
+		})
+		const body = new Body({
+			type      : Body.STATIC,
+			material  : material,
+			position  : new CannonVec3(
+				collider.position[0],
+				collider.position[1],
+				collider.position[2],
+			),
+			quaternion: new CannonQuaternion(
+				collider.rotation[0],
+				collider.rotation[1],
+				collider.rotation[2],
+				collider.rotation[3],
+			),
+		})
+
+		body.addShape(
+			new Box(
+				new CannonVec3(
+					collider.dimensions[0] * 0.5,
+					collider.dimensions[1] * 0.5,
+					collider.dimensions[2] * 0.5,
+				),
+			),
+		)
+		world.addBody(body)
+	}
+}
+
+
+/** Rack rest positions (lane-local); same source as pin cylinder config in `colliders/pin-colliders.json`. */
 export const PIN_LANE_LOCAL_POSITIONS: ReadonlyArray<ReadonlyArray<number>> = pinConfig.positions
 
 /** Cannon cylinder is Y-up at identity; `lookRotation(forward, up)` per @dcl/ecs-math (forward first). */
 const UPRIGHT_PIN_QUATERNION = Quaternion.lookRotation(Vector3.Forward(), Vector3.Up())
 
+
+/**
+ * Cannon-es world for a single roll (lane, pins, ball).
+ */
 export class CannonSim {
 	private readonly settings        : SimulationSettings
 	private readonly world           : World
@@ -61,55 +118,37 @@ export class CannonSim {
 	private readonly pinBodies       : Body[]
 	private readonly initialPinStates: boolean[]
 
+
+	// MARK: constructor
+	/**
+	 * Builds the simulation world: lane (and optional bumper) colliders, pin cylinders, ball sphere, then applies
+	 * the initial impulse and spin.
+	 */
 	constructor(
 		position : Vector3Type,
 		direction: Vector3Type,
 		strength : number,
+		spin     : number,
 		pinStates: boolean[] = Array(PIN_LANE_LOCAL_POSITIONS.length).fill(true),
 		settings : SimulationSettings = GameSettings,
 	) {
 		this.settings        = settings
-		this.initialPinStates = Array.from(
-			{ length: PIN_LANE_LOCAL_POSITIONS.length },
-			(_, index) => pinStates[index] ?? true,
-		)
-		// cannon-es `World` has no implicit floor or ground body — only bodies we add below participate.
+
 		this.world = new World({
 			gravity: new CannonVec3(0, -9.82, 0),
 		})
 
-		for (const collider of laneColliders) {
-			if (collider.shape !== 'BOX') {
-				continue
-			}
-
-			const material = new Material({
-				friction   : collider.friction,
-				restitution: collider.restitution,
-			})
-			const body = new Body({
-				type      : Body.STATIC,
-				material  : material,
-				position  : new CannonVec3(collider.position[0], collider.position[1], collider.position[2]),
-				quaternion: new CannonQuaternion(
-					collider.rotation[0],
-					collider.rotation[1],
-					collider.rotation[2],
-					collider.rotation[3],
-				),
-			})
-
-			body.addShape(
-				new Box(
-					new CannonVec3(
-						collider.dimensions[0] * 0.5,
-						collider.dimensions[1] * 0.5,
-						collider.dimensions[2] * 0.5,
-					),
-				),
-			)
-			this.world.addBody(body)
+		// Add the world colliders
+		addStaticBoxCollidersToWorld( this.world, laneColliders)
+		if (this.settings.laneBumpersEnabled) {
+			addStaticBoxCollidersToWorld(this.world, bumperColliders)
 		}
+
+		// Configure the pins
+		this.initialPinStates = Array.from(
+			{ length: PIN_LANE_LOCAL_POSITIONS.length },
+			(_, index) => pinStates[index] ?? true,
+		)
 
 		const pinMaterial = new Material({
 			friction   : this.settings.pinFriction,
@@ -118,14 +157,10 @@ export class CannonSim {
 
 		this.pinBodies = []
 		for (let index = 0; index < PIN_LANE_LOCAL_POSITIONS.length; index += 1) {
-			if (!this.initialPinStates[index]) {
-				continue
-			}
+			if (!this.initialPinStates[index]) continue
 
 			const lanePosition = PIN_LANE_LOCAL_POSITIONS[index]
-			if (!lanePosition) {
-				continue
-			}
+			if (!lanePosition) continue
 
 			const pinBody = new Body({
 				mass          : this.settings.pinMass,
@@ -164,14 +199,18 @@ export class CannonSim {
 		this.ballBody.addShape(new Sphere(this.settings.ballRadius))
 		this.world.addBody(this.ballBody)
 
-		this.fireBall(direction, strength)
+		this.fireBall(direction, strength, spin)
 	}
 
+
 	// MARK: advance
+	/**
+	 * Integrates the world forward by `dt` seconds, using `simSubSteps` substeps from settings.
+	 */
 	advance(dt: number): CannonSimAdvanceResult {
 		const subSteps = Math.max(1, Math.floor(this.settings.simSubSteps))
 		const subDt = dt / subSteps
-		for (let i = 0; i < subSteps; i += 1) {
+		for (let i = 0; i < subSteps; i++) {
 			this.world.step(subDt, undefined)
 		}
 
@@ -181,12 +220,16 @@ export class CannonSim {
 		}
 	}
 
+
 	// MARK: simulate
+	/**
+	 * Samples the roll into keyframes until idle or for the given `duration` (capped by settings and idle detection).
+	 */
 	simulate(duration: number = this.settings.simDuration): SimulationResult {
-		const stepTime             = 1 / this.settings.simFrameRate
-		const totalSteps           = Math.floor(duration / stepTime)
-		let   framesWithoutVelocity = 0
-		const computeStartedAt     = performance.now()
+		const stepTime            = 1 / this.settings.simFrameRate
+		const totalSteps          = Math.floor(duration / stepTime)
+		const computeStartedAt    = performance.now()
+		let framesWithoutVelocity = 0
 
 		const result: SimulationResult = {
 			ballKeyframes: {
@@ -218,6 +261,13 @@ export class CannonSim {
 
 			if (lengthSquared(step.ball.velocity) > this.settings.velocityRestEpsilon) {
 				hasVelocity = true
+			}
+			if (!hasVelocity) {
+				const av     = this.ballBody.angularVelocity
+				const omega2 = av.x * av.x + av.y * av.y + av.z * av.z
+				if (omega2 > this.settings.velocityRestEpsilon) {
+					hasVelocity = true
+				}
 			}
 
 			for (const pin of step.pins) {
@@ -266,10 +316,12 @@ export class CannonSim {
 		return result
 	}
 
+
 	// MARK: fireBall
 	private fireBall(
 		direction: Vector3Type,
 		strength : number,
+		spin     : number,
 	): void {
 		const magnitude = Math.sqrt(direction.x ** 2 + direction.y ** 2 + direction.z ** 2)
 		if (magnitude <= 1e-6) {
@@ -289,7 +341,15 @@ export class CannonSim {
 				direction.z * impulseScale,
 			),
 		)
+
+		const clampedSpin = Math.max(-1, Math.min(1, spin))
+		this.ballBody.angularVelocity.set(
+			0,
+			clampedSpin * this.settings.maxAngularVelocity,
+			0,
+		)
 	}
+
 
 	// MARK: getBodyTransform
 	private getBodyTransform(body: Body): CannonSimObjectState {
@@ -314,20 +374,3 @@ export class CannonSim {
 		}
 	}
 }
-
-function lengthSquared(vector: Vector3Type): number {
-	return vector.x ** 2 + vector.y ** 2 + vector.z ** 2
-}
-
-function roundVec3(
-	vector        : Vector3Type,
-	decimalPlaces : number,
-): Vector3Type {
-	const factor = 10 ** decimalPlaces
-	return {
-		x: Math.round(vector.x * factor) / factor,
-		y: Math.round(vector.y * factor) / factor,
-		z: Math.round(vector.z * factor) / factor,
-	}
-}
-

@@ -16,7 +16,7 @@
 import { ReadWriteByteBuffer } from '@dcl/ecs/dist/serialization/ByteBuffer'
 import { Schemas } from '@dcl/sdk/ecs'
 
-import type { SimulationComparison, SimulationResult, SimObjectKeyframe } from '../types'
+import type { SimulationComparison, SimulationResult, SimObjectKeyframe } from 'src/bowling/physics/types'
 
 /** Same event string as `MessageType.NOTIFY_PLAYER_ROLL_PLAYBACK` in authoritative bowling. */
 export const NOTIFY_PLAYER_ROLL_PLAYBACK = 'notifyPlayerRollPlayback'

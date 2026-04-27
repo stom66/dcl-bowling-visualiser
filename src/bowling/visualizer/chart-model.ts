@@ -1,6 +1,6 @@
-import { countSimulationKeyframes } from '../physics/physics.keyframe-optimization'
-import type { ChannelKey } from './keyframe-channels'
-import type { SimulationComparison, SimObjectKeyframe, SimObjectKeyframes } from '../types'
+import { countSimulationKeyframes } from 'src/bowling/physics/physics.keyframe-optimization'
+import type { ChannelKey } from 'src/bowling/visualizer/keyframe-channels'
+import type { SimulationComparison, SimObjectKeyframe, SimObjectKeyframes } from 'src/bowling/physics/types'
 
 export type DatasetKey = 'original' | 'compressed'
 export type EntityKind = 'ball' | 'pin'
@@ -59,6 +59,11 @@ export const CHANNEL_OPTIONS: Array<{ value: ChannelKey; label: string }> = [
 	{ value: 'rotation.z', label: 'Rotation Z (°)' },
 ]
 
+
+// MARK: buildSimulationChartModel
+/**
+ * Builds per-channel ECharts series, per-entity stats, and aggregate stats from a simulation comparison payload.
+ */
 export function buildSimulationChartModel(comparison: SimulationComparison): SimulationChartModel {
 	const trackPairs = [
 		{
@@ -102,6 +107,8 @@ export function buildSimulationChartModel(comparison: SimulationComparison): Sim
 	}
 }
 
+
+// MARK: buildSeriesForChannel
 function buildSeriesForChannel(
 	tracks: Array<{
 		key: string
@@ -133,6 +140,8 @@ function buildSeriesForChannel(
 	])
 }
 
+
+// MARK: buildEntityStats
 function buildEntityStats(track: {
 	key: string
 	label: string
@@ -169,6 +178,8 @@ function buildEntityStats(track: {
 	}
 }
 
+
+// MARK: buildAggregateChannelStats
 function buildAggregateChannelStats(
 	tracks: Array<{
 		original: SimObjectKeyframes
@@ -194,18 +205,33 @@ function buildAggregateChannelStats(
 	}
 }
 
-function toSeriesPoints(keyframes: SimObjectKeyframe[], channel: ChannelKey): Array<[number, number]> {
+
+// MARK: toSeriesPoints
+function toSeriesPoints(
+	keyframes: SimObjectKeyframe[],
+	channel  : ChannelKey,
+): Array<[number, number]> {
 	return keyframes.flatMap((keyframe) => {
 		const value = getChannelValue(keyframe, channel)
 		return value === undefined ? [] : [[keyframe.time, value] as [number, number]]
 	})
 }
 
-function countChannelKeyframes(keyframes: SimObjectKeyframe[], channel: ChannelKey): number {
+
+// MARK: countChannelKeyframes
+function countChannelKeyframes(
+	keyframes: SimObjectKeyframe[],
+	channel  : ChannelKey,
+): number {
 	return keyframes.filter((keyframe) => getChannelValue(keyframe, channel) !== undefined).length
 }
 
-function getChannelValue(keyframe: SimObjectKeyframe, channel: ChannelKey): number | undefined {
+
+// MARK: getChannelValue
+function getChannelValue(
+	keyframe: SimObjectKeyframe,
+	channel : ChannelKey,
+): number | undefined {
 	switch (channel) {
 		case 'position.x':
 			return keyframe.position?.x
@@ -222,7 +248,12 @@ function getChannelValue(keyframe: SimObjectKeyframe, channel: ChannelKey): numb
 	}
 }
 
-function percentage(saved: number, total: number): number {
+
+// MARK: percentage
+function percentage(
+	saved: number,
+	total: number,
+): number {
 	if (total <= 0) {
 		return 0
 	}

@@ -1,4 +1,5 @@
-import type { SimObjectKeyframe } from '../types'
+import type { SimObjectKeyframe } from 'src/bowling/physics/types'
+
 
 /** Per-axis channel id for charting / UI; not part of the portable keyframe payload shape. */
 export type ChannelKey =
@@ -9,6 +10,11 @@ export type ChannelKey =
 	| 'rotation.y'
 	| 'rotation.z'
 
+
+// MARK: listKeyframeChannels
+/**
+ * Lists which scalar channels are present (from position and/or rotation) on `keyframe`.
+ */
 export function listKeyframeChannels(keyframe: SimObjectKeyframe): ChannelKey[] {
 	const channels: ChannelKey[] = []
 

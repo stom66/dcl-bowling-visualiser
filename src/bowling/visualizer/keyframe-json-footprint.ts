@@ -6,7 +6,7 @@
  * `estimateRollPlaybackWireSizes` / `getRollPlaybackMessagePayloadSizeBytes` in
  * `./message-bus-roll-playback-size.ts` (SDK `Schemas` + `ReadWriteByteBuffer`).
  */
-import type { SimulationResult, SimObjectKeyframe, SimObjectKeyframes } from '../types'
+import type { SimulationResult, SimObjectKeyframe, SimObjectKeyframes } from 'src/bowling/physics/types'
 
 export function estimateKeyframeBytes(keyframe: SimObjectKeyframe): number {
 	return new TextEncoder().encode(JSON.stringify(keyframe)).length

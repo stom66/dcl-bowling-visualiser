@@ -2,7 +2,7 @@ import {
 	DEFAULT_STORED_ROTATION,
 	quaternionToStoredRotation,
 	storedRotationToQuaternion,
-} from '../math/rotation-encoding'
+} from './physics.utils'
 import type {
 	OptimizationSettings,
 	QuaternionType,
@@ -10,7 +10,7 @@ import type {
 	SimObjectKeyframe,
 	SimObjectKeyframes,
 	Vector3Type,
-} from '../types'
+} from './types'
 
 /**
  * `keyframeReductionEpsilon` is in **world units** (meters) for position. For rotation, stored Euler
@@ -428,8 +428,14 @@ function unwrapQuaternionHemisphere(samples: MaterializedRdpSample[]) {
 	}
 }
 
+
+// MARK: distPointToLine3D
 /** Perpendicular distance from p to the infinite 3D line through a and b. Collinear points yield ~0. */
-function distPointToLine3D(p: Vector3Type, a: Vector3Type, b: Vector3Type): number {
+function distPointToLine3D(
+	p         : Vector3Type,
+	a         : Vector3Type,
+	b         : Vector3Type,
+): number {
 	const abx = b.x - a.x
 	const aby = b.y - a.y
 	const abz = b.z - a.z
@@ -446,6 +452,8 @@ function distPointToLine3D(p: Vector3Type, a: Vector3Type, b: Vector3Type): numb
 	return Math.hypot(cx, cy, cz) / Math.sqrt(ab2)
 }
 
+
+// MARK: normalizeQuat
 function normalizeQuat(
 	q: QuaternionType,
 ): QuaternionType {
@@ -456,7 +464,13 @@ function normalizeQuat(
 	return { x: q.x / len, y: q.y / len, z: q.z / len, w: q.w / len }
 }
 
-function slerpQuat(a: QuaternionType, b: QuaternionType, t: number): QuaternionType {
+
+// MARK: slerpQuat
+function slerpQuat(
+	a         : QuaternionType,
+	b         : QuaternionType,
+	t         : number,
+): QuaternionType {
 	let cosHalfTheta = a.w * b.w + a.x * b.x + a.y * b.y + a.z * b.z
 	if (cosHalfTheta < 0) {
 		cosHalfTheta = -cosHalfTheta
@@ -486,6 +500,8 @@ function slerpQuat(a: QuaternionType, b: QuaternionType, t: number): QuaternionT
 	}
 }
 
+
+// MARK: quatGeodesicAngleRad
 /** Shortest 3D angle between quaternions (radians) when both are used as orientations. */
 function quatGeodesicAngleRad(
 	left : QuaternionType,

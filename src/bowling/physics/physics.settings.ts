@@ -1,29 +1,30 @@
-import type { OptimizationSettings, SimulationSettings } from '../types/bowling-sim'
-export type { OptimizationSettings, SimulationSettings } from '../types/bowling-sim'
+import type { OptimizationSettings, SimulationSettings } from './types'
 
 export const GameSettings: SimulationSettings = {
 	ballMass           : 15,
-	ballFriction       : 0.1,
+	ballFriction       : 0.05,
 	ballRestitution    : 0.05,
 	ballRadius         : 0.12,
+	maxAngularVelocity : 10,   // rad/s
 	bowlSpeedMax       : 20,
-	bowlSpeedMin       : 5,
-	decimalPlaces      : 2,
-	idleFrameCap       : 10,
+	bowlSpeedMin       : 4,
+	decimalPlaces      : 2,    // decimal places to use for the simulation result
+	idleFrameCap       : 10,   // stop the roll sampler after this many consecutive frames with no significant velocity
 	pinMass            : 1.58,
 	pinFriction        : 0.5,
 	pinRestitution     : 0,
-	simDuration        : 6,
-	simFrameRate       : 60,
-	simSubSteps        : 4,
-	velocityRestEpsilon: 0.02,
+	laneBumpersEnabled : false,
+	simDuration        : 10,
+	simFrameRate       : 60,   // max frame rate of the returned simulation
+	simSubSteps        : 4,    // extra frames used during the simulation to improve the accuracy
+	velocityRestEpsilon: 0.02, // velocity rest epsilon
 }
 
 export const DefaultOptimizationSettings: OptimizationSettings = {
 	keyframeOptimizationEnabled      : true,
 	keyframeReductionEpsilon         : 0.02,
-	keyframeRdpMaxPositionErrorM     : 0.025,
-	keyframeRdpMaxRotationErrorDeg   : 30,    // Slerp comparison only; if too tight, every frame stays (union with position RDP then dense).
-	keyframePrecontactMotionMinPosM  : 0.02, // Precontact: ignore sub-mm drift; first sample past this vs t=0 is “motion.”
-	keyframePrecontactMotionMinRotDeg: 0.3,   // Precontact: ignore sub-degree quat wobble before real hit.
+	keyframeRdpMaxPositionErrorM     : 0.015,
+	keyframeRdpMaxRotationErrorDeg   : 5,    // Slerp comparison only; if too tight, every frame stays (union with position RDP then dense).
+	keyframePrecontactMotionMinPosM  : 0.10, // Precontact: ignore sub-mm drift; first sample past this vs t=0 is “motion.”
+	keyframePrecontactMotionMinRotDeg: 0.30,   // Precontact: ignore sub-degree quat wobble before real hit.
 }

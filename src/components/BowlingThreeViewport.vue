@@ -3,11 +3,12 @@ import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import * as THREE from 'three'
 
 import { PIN_LANE_LOCAL_POSITIONS } from '../bowling/physics/physics.cannon-sim'
-import laneCollidersJson from '../bowling/data/lane-colliders.json'
-import pinCollidersJson from '../bowling/data/pin-colliders.json'
+import bumperCollidersJson from '../bowling/physics/colliders/bumper-colliders.json'
+import laneCollidersJson from '../bowling/physics/colliders/lane-colliders.json'
+import pinCollidersJson from '../bowling/physics/colliders/pin-colliders.json'
 import { GameSettings } from '../bowling/physics/physics.settings'
 import { maxPlaybackTime, samplePlaybackAtTime } from '../bowling/visualizer/playback-sample'
-import type { SimulationComparison } from '../bowling/types'
+import type { SimulationComparison } from '../bowling/physics/types'
 
 const props = withDefaults(
 	defineProps<{
@@ -15,10 +16,12 @@ const props = withDefaults(
 		enabledPins: boolean[]
 		/** Per index: pin was included in the simulated rack (false = no body, hide mesh). */
 		startingPinStates: boolean[]
+		/** When true, gutter bumper box colliders exist in the sim and can be outlined (orange) with Outlines on. */
+		laneBumpersEnabled?: boolean
 		/** When true, omit the title + intro paragraph (parent supplies section chrome). */
 		hideIntroHeading?: boolean
 	}>(),
-	{ hideIntroHeading: false },
+	{ hideIntroHeading: false, laneBumpersEnabled: false },
 )
 
 const canvasWrapRef = ref<HTMLDivElement | null>(null)
@@ -29,7 +32,7 @@ const isPlaying = ref(false)
 const playbackTime = ref(0)
 const playbackSpeed = ref(1)
 const loopPlayback = ref(false)
-/** Lane BOX colliders + pin cylinders + ball sphere (same shapes as `physics.cannon-sim`; not passive CYLINDER entries in lane JSON). */
+/** Lane BOX colliders (blue tones), optional bumper boxes (orange when `laneBumpersEnabled`), plus pin cylinders and ball sphere (matches `physics.cannon-sim`). */
 const showColliderWireframes = ref(false)
 
 const activeResult = computed(() =>
@@ -40,7 +43,7 @@ const durationMax = computed(() => maxPlaybackTime(activeResult.value))
 
 const ballRadius = GameSettings.ballRadius
 
-/** Same cylinder as physics (`data/pin-colliders.json`); Three `CylinderGeometry` is (radiusTop, radiusBottom, height, …). */
+/** Same cylinder as physics (`physics/colliders/pin-colliders.json`); Three `CylinderGeometry` is (radiusTop, radiusBottom, height, …). */
 const pinCylinder = pinCollidersJson.cylinder as {
 	radiusTop: number
 	radiusBottom: number
@@ -311,6 +314,39 @@ let pinCylinderEdgesGeom: THREE.EdgesGeometry | null = null
 let ballSphereEdgesGeom: THREE.EdgesGeometry | null = null
 const colliderOutlineMaterials: THREE.LineBasicMaterial[] = []
 const laneColliderDebugGeoms: THREE.BufferGeometry[] = []
+const bumperColliderDebugGeoms: THREE.BufferGeometry[] = []
+let bumperWireRoot: THREE.Group | null = null
+
+/**
+ * Procedural albedo for the ball: high-contrast check with extra meridian bands (wide aspect) so rotation about
+ * +Y is easy to read from the side, and the pattern still moves on the top view.
+ */
+function createBallSpinDebugMap(): THREE.CanvasTexture {
+	const width  = 512
+	const height = 256
+	const canvas = document.createElement('canvas')
+	canvas.width  = width
+	canvas.height = height
+	const ctx = canvas.getContext('2d')
+	if (!ctx) {
+		return new THREE.CanvasTexture(canvas)
+	}
+	const columns = 20
+	const rows    = 6
+	const cellW   = width / columns
+	const cellH   = height / rows
+	const light   = '#e8f4fc'
+	const dark    = '#0b4d7a'
+	for (let row = 0; row < rows; row += 1) {
+		for (let col = 0; col < columns; col += 1) {
+			ctx.fillStyle = (col + row) % 2 === 0 ? light : dark
+			ctx.fillRect(col * cellW, row * cellH, cellW + 0.5, cellH + 0.5)
+		}
+	}
+	const tex = new THREE.CanvasTexture(canvas)
+	tex.colorSpace = THREE.SRGBColorSpace
+	return tex
+}
 
 /** Ever-so-slightly different blues (HSL) so collider wireframes are easier to tell apart. */
 function takeColliderOutlineMaterial(serial: number): THREE.LineBasicMaterial {
@@ -322,6 +358,20 @@ function takeColliderOutlineMaterial(serial: number): THREE.LineBasicMaterial {
 	})
 	colliderOutlineMaterials.push(mat)
 	return mat
+}
+
+/** Orange wireframes for `bumper-colliders.json` (distinct from lane world blues). */
+function takeBumperOutlineMaterial(): THREE.LineBasicMaterial {
+	const mat = new THREE.LineBasicMaterial({ color: 0xff9100 })
+	colliderOutlineMaterials.push(mat)
+	return mat
+}
+
+function syncBumperColliderWireVisibility(): void {
+	if (!bumperWireRoot) {
+		return
+	}
+	bumperWireRoot.visible = showColliderWireframes.value && props.laneBumpersEnabled
 }
 
 function syncColliderWireframes(): void {
@@ -377,7 +427,11 @@ onMounted(() => {
 	laneRoot.add(grid)
 
 	ballGeometry = new THREE.SphereGeometry(ballRadius, 24, 24)
-	const ballMat = new THREE.MeshBasicMaterial({ color: 0x60a5fa })
+	const ballMap = createBallSpinDebugMap()
+	const ballMat = new THREE.MeshBasicMaterial({
+		color: 0xffffff,
+		map  : ballMap,
+	})
 	const ball = new THREE.Mesh(ballGeometry, ballMat)
 	laneRoot.add(ball)
 	ballMesh.value = ball
@@ -426,6 +480,28 @@ onMounted(() => {
 		line.quaternion.set(qx, qy, qz, qw)
 		colliderDebugRoot.add(line)
 	}
+
+	bumperWireRoot = new THREE.Group()
+	bumperWireRoot.name = 'BumperWireframes'
+	const bumperMat = takeBumperOutlineMaterial()
+	for (const entry of bumperCollidersJson as LaneJsonEntry[]) {
+		if (entry.shape !== 'BOX' || !entry.dimensions || !entry.position || !entry.rotation) {
+			continue
+		}
+		const [dx, dy, dz] = entry.dimensions
+		const [px, py, pz] = entry.position
+		const [qx, qy, qz, qw] = entry.rotation
+		const boxGeo = new THREE.BoxGeometry(dx, dy, dz)
+		const edges = new THREE.EdgesGeometry(boxGeo)
+		boxGeo.dispose()
+		bumperColliderDebugGeoms.push(edges)
+		const line = new THREE.LineSegments(edges, bumperMat)
+		line.position.set(px, py, pz)
+		line.quaternion.set(qx, qy, qz, qw)
+		bumperWireRoot.add(line)
+	}
+	colliderDebugRoot.add(bumperWireRoot)
+	syncBumperColliderWireVisibility()
 
 	pinCylinderEdgesGeom = new THREE.EdgesGeometry(pinSharedGeometry)
 	for (let i = 0; i < PIN_LANE_LOCAL_POSITIONS.length; i += 1) {
@@ -508,6 +584,11 @@ onUnmounted(() => {
 		g.dispose()
 	}
 	laneColliderDebugGeoms.length = 0
+	for (const g of bumperColliderDebugGeoms) {
+		g.dispose()
+	}
+	bumperColliderDebugGeoms.length = 0
+	bumperWireRoot = null
 	pinCylinderEdgesGeom?.dispose()
 	pinCylinderEdgesGeom = null
 	ballSphereEdgesGeom?.dispose()
@@ -531,7 +612,9 @@ onUnmounted(() => {
 		;(m.material as THREE.Material).dispose()
 	}
 	if (ballMesh.value) {
-		;(ballMesh.value.material as THREE.Material).dispose()
+		const ballMat = ballMesh.value.material as THREE.MeshBasicMaterial
+		ballMat.map?.dispose()
+		ballMat.dispose()
 	}
 	scene = null
 	sideCamera = null
@@ -581,7 +664,15 @@ watch(showColliderWireframes, (on) => {
 	if (colliderDebugRoot) {
 		colliderDebugRoot.visible = on
 	}
+	syncBumperColliderWireVisibility()
 })
+
+watch(
+	() => props.laneBumpersEnabled,
+	() => {
+		syncBumperColliderWireVisibility()
+	},
+)
 
 function togglePlay(): void {
 	if (durationMax.value <= 0) {
@@ -614,8 +705,9 @@ function toggleColliderWireframes(): void {
 			<div>
 				<h2>3D playback</h2>
 				<p>
-					Side, top, and orbit (drag in the right third; wheel zooms). Meshes use basic materials; ball and each pin
-					match chart hues. Switch source to compare original keyframes vs compressed interpolation.
+					Side, top, and orbit (drag in the right third; wheel zooms). The ball uses a high-contrast check pattern on
+					the albedo (wide cells) so spin is easy to read; pins use solid hues. Switch source to compare original
+					keyframes vs compressed interpolation.
 				</p>
 			</div>
 		</div>
@@ -680,7 +772,7 @@ function toggleColliderWireframes(): void {
 					:class="{ 'loop-toggle--on': showColliderWireframes }"
 					:aria-pressed="showColliderWireframes"
 					aria-label="Toggle collider wireframe outlines"
-					title="Cannon collider wireframes: lane, pins, ball"
+					title="Collider wireframe outlines: lane (blue tones), pins, ball; bumpers (orange) when lane bumpers are enabled in Simulation Inputs"
 					@click="toggleColliderWireframes"
 				>
 					<i class="fa-solid fa-vector-square" aria-hidden="true" />

@@ -8,16 +8,13 @@ Copy this folder tree and keep **relative paths** between these pieces (or updat
 
 | Path in this repo | Role |
 |-------------------|------|
-| `src/bowling/physics/` | Cannon sim, RDP / keyframe optimization, `getSimulationResults` entry |
-| `src/bowling/types/` | `bowling-sim` types, re-exports of `Quaternion` / vector types from `@dcl/sdk` and `@dcl/ecs` |
-| `src/bowling/data/lane-colliders.json` | Lane collision mesh data |
-| `src/bowling/data/pin-colliders.json` | Pin collision + placement data |
+| `src/bowling/physics/` | Cannon sim, RDP / keyframe optimization, `getSimulationResults` entry, **`types/`** (`bowling-sim` + DCL re-exports), **`colliders/*.json`** |
 
 `physics.client.ts` is the main API: `getSimulationResults`, `resolveSimulationSettings`, `resolveOptimizationSettings`, `DEFAULT_SIMULATION_INPUT`.
 
 ## 2. Optional: charts, playback helpers, UI
 
-- `src/bowling/visualizer/` — playback sampling, ECharts model, size estimates for wire formats, etc. Imports `../physics` and `../types` the same way.
+- `src/bowling/visualizer/` — playback sampling, ECharts model, size estimates for wire formats, etc. Imports `../physics/...` and `../physics/types` (or your `src/.../physics/types` alias) the same way.
 - `src/components/BowlingSimVisualizer.vue`, `BowlingThreeViewport.vue` — full debug UI; pull in if you use Vue 3 + Three + ECharts the same way.
 
 If you only need **numbers + keyframes** for your own renderer, you can skip the `visualizer/` and Vue files.
@@ -36,7 +33,7 @@ If you use the wire-size / message-bus modules under `visualizer/`, you also nee
 ## 4. TypeScript / bundler
 
 - Enable **`"resolveJsonModule": true`** (or equivalent) so the `*.json` collider imports work.
-- If your bundler does not resolve the `@dcl/*` packages the same way, adjust or shim `src/bowling/types/index.ts` to match how your DCL (or other) app exposes `Quaternion` and `Vector3` types.
+- If your bundler does not resolve the `@dcl/*` packages the same way, adjust or shim `src/bowling/physics/types/index.ts` to match how your DCL (or other) app exposes `Quaternion` and `Vector3` types.
 
 ## 5. Usage sketch
 
@@ -57,7 +54,7 @@ const { original, compressed } = getSimulationResults(
 // `compressed` is ready to serialize: ball + per-pin `SimObjectKeyframes`.
 ```
 
-`SimulationResult` and settings types live in `src/bowling/types/bowling-sim.ts` (re-exported via `src/bowling/types/index.ts`).
+`SimulationResult` and settings types live in `src/bowling/physics/types/bowling-sim.ts` (re-exported via `src/bowling/physics/types/index.ts`).
 
 ## 6. After you move files
 

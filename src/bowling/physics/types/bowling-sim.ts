@@ -18,11 +18,12 @@ export type SimObjectKeyframes = {
 }
 
 export type SimulationInput = {
-	position : Vector3Type
 	direction: Vector3Type
-	strength : number
 	duration : number
 	pinStates: boolean[]
+	position : Vector3Type
+	spin     : number /** −1…+1, scaled by {@link SimulationSettings.maxAngularVelocity} for initial angular velocity about +Y (rad/s). */
+	strength : number	
 }
 
 /** Full keyframe set from physics (original) or after optimizer reduction (compressed). */
@@ -44,8 +45,8 @@ export type SimulationComparison = {
 /** Keyframe optimizer only; not used by physics integration (see `SimulationSettings.velocityRestEpsilon` for sim early-stop). */
 export type OptimizationSettings = {
 	/**
-	 * When false, the keyframe reduction pipeline is skipped: “compressed” tracks are copies of the raw sim (see
-	 * `getSimulationResults` in `physics.client`). Physically ignored by the simulator; host-only.
+	 * When false, the keyframe reduction pipeline is skipped and `getSimulationResults` uses the same
+	 * `SimulationResult` for both `original` and `compressed`. Physically ignored by the simulator; host-only.
 	 */
 	keyframeOptimizationEnabled      : boolean
 	/** Meters. Flat dedup: middle keyframe dropped if prev/mid/next equal for position, or equal for rotation (Euler) via quaternion round-trip. */
@@ -85,12 +86,20 @@ export type SimulationSettings = {
 	ballFriction                    : number
 	ballRestitution                 : number
 	ballRadius                      : number
+	/**
+	 * Magnitude of initial ball angular velocity about +Y (rad/s) when `spin` is ±1. Scales linearly: ωy = `spin` × this.
+	 */
+	maxAngularVelocity              : number
 	bowlSpeedMin                    : number
 	bowlSpeedMax                    : number
 	/** Overrides pin cylinder mass from collider data in the Cannon sim. */
 	pinMass                         : number
 	pinFriction                     : number
 	pinRestitution                  : number
+	/**
+	 * When true, static box colliders from `physics/colliders/bumper-colliders.json` are added to the Cannon world (gutter bumpers).
+	 */
+	laneBumpersEnabled              : boolean
 }
 
 /**

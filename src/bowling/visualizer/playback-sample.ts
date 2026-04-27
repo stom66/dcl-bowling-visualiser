@@ -1,17 +1,20 @@
-import { storedRotationToQuaternion } from '../math/rotation-encoding'
+import { storedRotationToQuaternion } from 'src/bowling/physics/physics.utils'
 import type {
 	QuaternionType,
 	SimulationResult,
 	SimObjectKeyframe,
 	SimObjectKeyframes,
 	Vector3Type,
-} from '../types'
+} from 'src/bowling/physics/types'
+
 
 const IDENTITY_QUAT: QuaternionType = { x: 0, y: 0, z: 0, w: 1 }
 
 type PosAnchor = { time: number; p: Vector3Type }
 type RotAnchor = { time: number; q: QuaternionType }
 
+
+// MARK: materializeKeyframes
 /**
  * Fills a dense pose at each key time. Keys may omit `position` or `rotation` (RDP can store them on different
  * time samples); this interpolates in time from the sparse anchors, using forward / backward / linear segments.
@@ -42,7 +45,13 @@ function materializeKeyframes(
 	}))
 }
 
-function lerpVec3(a: Vector3Type, b: Vector3Type, t: number): Vector3Type {
+
+// MARK: lerpVec3
+function lerpVec3(
+	a         : Vector3Type,
+	b         : Vector3Type,
+	t         : number,
+): Vector3Type {
 	return {
 		x: a.x + (b.x - a.x) * t,
 		y: a.y + (b.y - a.y) * t,
@@ -50,10 +59,12 @@ function lerpVec3(a: Vector3Type, b: Vector3Type, t: number): Vector3Type {
 	}
 }
 
+
+// MARK: lerp3FromTimeAnchors
 function lerp3FromTimeAnchors(
-	anchors: Array<{ time: number; p: Vector3Type }>,
-	t: number,
-	defaultP: Vector3Type,
+	anchors  : Array<{ time: number; p: Vector3Type }>,
+	t        : number,
+	defaultP : Vector3Type,
 ): Vector3Type {
 	if (anchors.length === 0) {
 		return { ...defaultP }
@@ -79,10 +90,12 @@ function lerp3FromTimeAnchors(
 	return lerpVec3(a.p, b.p, u)
 }
 
+
+// MARK: slerpFromTimeAnchors
 function slerpFromTimeAnchors(
-	anchors: Array<{ time: number; q: QuaternionType }>,
-	t: number,
-	defaultQ: QuaternionType,
+	anchors  : Array<{ time: number; q: QuaternionType }>,
+	t        : number,
+	defaultQ : QuaternionType,
 ): QuaternionType {
 	if (anchors.length === 0) {
 		return { ...defaultQ }
@@ -108,7 +121,13 @@ function slerpFromTimeAnchors(
 	return slerpQuat(a.q, b.q, u)
 }
 
-function slerpQuat(a: QuaternionType, b: QuaternionType, t: number): QuaternionType {
+
+// MARK: slerpQuat
+function slerpQuat(
+	a         : QuaternionType,
+	b         : QuaternionType,
+	t         : number,
+): QuaternionType {
 	let cosHalfTheta = a.w * b.w + a.x * b.x + a.y * b.y + a.z * b.z
 	if (cosHalfTheta < 0) {
 		cosHalfTheta = -cosHalfTheta
@@ -142,9 +161,11 @@ function slerpQuat(a: QuaternionType, b: QuaternionType, t: number): QuaternionT
 	}
 }
 
+
+// MARK: sampleMaterialized
 function sampleMaterialized(
 	materialized: Array<{ time: number; position: Vector3Type; rotation: QuaternionType }>,
-	time: number,
+	time        : number,
 ): { position: Vector3Type; rotation: QuaternionType } {
 	if (materialized.length === 0) {
 		return { position: { x: 0, y: 0, z: 0 }, rotation: { ...IDENTITY_QUAT } }
@@ -184,9 +205,15 @@ function sampleMaterialized(
 	}
 }
 
+
+// MARK: sampleTrackAtTime
+/**
+ * Interpolates position and rotation at `time` from a keyframe track (materialized, then sampled).
+ * Returns `null` if the track has no keyframes.
+ */
 export function sampleTrackAtTime(
-	track: SimObjectKeyframes,
-	time: number,
+	track : SimObjectKeyframes,
+	time  : number,
 ): { position: Vector3Type; rotation: QuaternionType } | null {
 	if (track.keyframes.length === 0) {
 		return null
@@ -195,11 +222,17 @@ export function sampleTrackAtTime(
 	return sampleMaterialized(materialized, time)
 }
 
+
+// MARK: maxTrackTime
+/** Latest `time` among keyframes in `track`, or `0` if empty. */
 export function maxTrackTime(track: SimObjectKeyframes): number {
 	const last = track.keyframes.at(-1)
 	return last?.time ?? 0
 }
 
+
+// MARK: maxPlaybackTime
+/** Maximum end time across the ball track and all pin tracks in `result`. */
 export function maxPlaybackTime(result: SimulationResult): number {
 	let maxT = maxTrackTime(result.ballKeyframes)
 	for (const pinTrack of result.pinsKeyframes) {
@@ -207,6 +240,7 @@ export function maxPlaybackTime(result: SimulationResult): number {
 	}
 	return maxT
 }
+
 
 export type PlaybackBodyPose = {
 	position: Vector3Type
@@ -218,7 +252,13 @@ export type PlaybackSample = {
 	pins: Array<PlaybackBodyPose | null>
 }
 
-export function samplePlaybackAtTime(result: SimulationResult, time: number): PlaybackSample {
+
+// MARK: samplePlaybackAtTime
+/** Ball + all pin poses at `time`; missing pins are `null`. */
+export function samplePlaybackAtTime(
+	result : SimulationResult,
+	time   : number,
+): PlaybackSample {
 	const ballSample = sampleTrackAtTime(result.ballKeyframes, time)
 	const ball: PlaybackBodyPose = ballSample ?? {
 		position: { x: 0, y: 0, z: 0 },
