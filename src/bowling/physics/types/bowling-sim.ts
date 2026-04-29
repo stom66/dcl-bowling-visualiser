@@ -84,20 +84,25 @@ export type SimulationSettings = {
 	simDuration                     : number
 	/** Stop sampling after this many consecutive frames with no significant body velocity. */
 	idleFrameCap                     : number
-	ballMass                        : number
+	ballAngularDamping              : number
 	ballFriction                    : number
-	ballRestitution                 : number
+	ballLinearDamping               : number
+	ballMass                        : number
 	ballRadius                      : number
+	ballRestitution                 : number
 	/**
 	 * Magnitude of initial ball angular velocity about +Y (rad/s) when `spin` is ±1. Scales linearly: ωy = `spin` × this.
 	 */
-	maxAngularVelocity              : number
+	ballMaxAngularVelocity          : number
 	bowlSpeedMin                    : number
 	bowlSpeedMax                    : number
 	/** Overrides pin cylinder mass from collider data in the Cannon sim. */
+	pinAngularDamping               : number
 	pinMass                         : number
 	pinFriction                     : number
+	pinLinearDamping                : number
 	pinRestitution                  : number
+	
 	/**
 	 * When true, static box colliders from `physics/colliders/bumper-colliders.json` are added to the Cannon world (gutter bumpers).
 	 */

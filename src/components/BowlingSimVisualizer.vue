@@ -133,10 +133,14 @@ const tuning = reactive({
 	ballMass: GameSettings.ballMass,
 	ballFriction: GameSettings.ballFriction,
 	ballRestitution: GameSettings.ballRestitution,
-	maxAngularVelocity: GameSettings.maxAngularVelocity,
+	ballLinearDamping: GameSettings.ballLinearDamping,
+	ballAngularDamping: GameSettings.ballAngularDamping,
+	maxAngularVelocity: GameSettings.ballMaxAngularVelocity,
 	pinMass: GameSettings.pinMass,
 	pinFriction: GameSettings.pinFriction,
 	pinRestitution: GameSettings.pinRestitution,
+	pinLinearDamping: GameSettings.pinLinearDamping,
+	pinAngularDamping: GameSettings.pinAngularDamping,
 	laneBumpersEnabled: GameSettings.laneBumpersEnabled,
 	keyframeReductionEpsilon: DefaultOptimizationSettings.keyframeReductionEpsilon,
 	keyframeRdpMaxPositionErrorM: DefaultOptimizationSettings.keyframeRdpMaxPositionErrorM,
@@ -155,10 +159,14 @@ function tuningSimulationOverrides(): Partial<SimulationSettings> {
 		ballMass: tuning.ballMass,
 		ballFriction: tuning.ballFriction,
 		ballRestitution: tuning.ballRestitution,
-		maxAngularVelocity: tuning.maxAngularVelocity,
+		ballLinearDamping: tuning.ballLinearDamping,
+		ballAngularDamping: tuning.ballAngularDamping,
+		ballMaxAngularVelocity: tuning.maxAngularVelocity,
 		pinMass: tuning.pinMass,
 		pinFriction: tuning.pinFriction,
 		pinRestitution: tuning.pinRestitution,
+		pinLinearDamping: tuning.pinLinearDamping,
+		pinAngularDamping: tuning.pinAngularDamping,
 		laneBumpersEnabled: tuning.laneBumpersEnabled,
 	}
 }
@@ -429,10 +437,14 @@ function resetDefaults(): void {
 	tuning.ballMass = GameSettings.ballMass
 	tuning.ballFriction = GameSettings.ballFriction
 	tuning.ballRestitution = GameSettings.ballRestitution
-	tuning.maxAngularVelocity = GameSettings.maxAngularVelocity
+	tuning.ballLinearDamping = GameSettings.ballLinearDamping
+	tuning.ballAngularDamping = GameSettings.ballAngularDamping
+	tuning.maxAngularVelocity = GameSettings.ballMaxAngularVelocity
 	tuning.pinMass = GameSettings.pinMass
 	tuning.pinFriction = GameSettings.pinFriction
 	tuning.pinRestitution = GameSettings.pinRestitution
+	tuning.pinLinearDamping = GameSettings.pinLinearDamping
+	tuning.pinAngularDamping = GameSettings.pinAngularDamping
 	tuning.laneBumpersEnabled = GameSettings.laneBumpersEnabled
 	tuning.keyframeReductionEpsilon = DefaultOptimizationSettings.keyframeReductionEpsilon
 	tuning.keyframeRdpMaxPositionErrorM = DefaultOptimizationSettings.keyframeRdpMaxPositionErrorM
@@ -959,6 +971,26 @@ const simInputSubsections = reactive({
 									/>
 								</label>
 								<label>
+									<span>Ball linear damping</span>
+									<input
+										v-model.number="tuning.ballLinearDamping"
+										type="number"
+										min="0"
+										step="0.01"
+										title="Cannon-es linearDamping on the ball body (velocity decay per sub-step)."
+									/>
+								</label>
+								<label>
+									<span>Ball angular damping</span>
+									<input
+										v-model.number="tuning.ballAngularDamping"
+										type="number"
+										min="0"
+										step="0.01"
+										title="Cannon-es angularDamping on the ball body (spin decay)."
+									/>
+								</label>
+								<label>
 									<span>Max angular velocity (Y, rad/s)</span>
 									<input
 										v-model.number="tuning.maxAngularVelocity"
@@ -1000,6 +1032,26 @@ const simInputSubsections = reactive({
 										max="1"
 										step="0.01"
 										title="Pin material restitution; overrides physics/colliders/pin-colliders.json in the Cannon sim."
+									/>
+								</label>
+								<label>
+									<span>Pin linear damping</span>
+									<input
+										v-model.number="tuning.pinLinearDamping"
+										type="number"
+										min="0"
+										step="0.01"
+										title="Cannon-es linearDamping on each pin body."
+									/>
+								</label>
+								<label>
+									<span>Pin angular damping</span>
+									<input
+										v-model.number="tuning.pinAngularDamping"
+										type="number"
+										min="0"
+										step="0.01"
+										title="Cannon-es angularDamping on each pin body."
 									/>
 								</label>
 							</div>

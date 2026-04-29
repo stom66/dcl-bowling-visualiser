@@ -108,7 +108,7 @@ const UNDERGROUND_SLEEP_Y = -0.4
 const LANE_END_Z_SLEEP_Y = 22
 
 /** When the ball is this far along the lane, wake up the pins. */
-const PIN_WAKUP_WHEN_BALL_Z = 17
+const PIN_WAKUP_WHEN_BALL_Z = 17.5
 
 
 /**
@@ -174,6 +174,12 @@ export class CannonSim {
 		})
 
 		this.pinBodies = []
+		const bodyCylinder = new Cylinder(
+			pinConfig.cylinder.radiusTop,
+			pinConfig.cylinder.radiusBottom,
+			pinConfig.cylinder.height,
+			pinConfig.cylinder.numSegments,
+		)
 		for (let index = 0; index < PIN_LANE_LOCAL_POSITIONS.length; index += 1) {
 			if (!this.initialPinStates[index]) continue
 
@@ -184,19 +190,12 @@ export class CannonSim {
 				mass          : this.settings.pinMass,
 				position      : new CannonVec3(lanePosition[0], lanePosition[1], lanePosition[2]),
 				quaternion    : new CannonQuaternion(0, 0, 0, 1),
-				linearDamping : 0.05,
-				angularDamping: 0.2
+				linearDamping : this.settings.pinLinearDamping,
+				angularDamping: this.settings.pinAngularDamping
 			})
 
 			pinBody.id = index
-			pinBody.addShape(
-				new Cylinder(
-					pinConfig.cylinder.radiusTop,
-					pinConfig.cylinder.radiusBottom,
-					pinConfig.cylinder.height,
-					pinConfig.cylinder.numSegments,
-				),
-			)
+			pinBody.addShape(bodyCylinder)
 			pinBody.shapes[0]!.material = pinMaterial
 			pinBody.sleep()
 
@@ -209,8 +208,8 @@ export class CannonSim {
 		this.ballBody = new Body({
 			mass          : this.settings.ballMass,
 			position      : new CannonVec3(position.x, position.y, position.z),
-			linearDamping : 0.01,
-			angularDamping: 0.02,
+			linearDamping : this.settings.ballLinearDamping,
+			angularDamping: this.settings.ballAngularDamping,
 			material      : new Material({
 				friction   : this.settings.ballFriction,
 				restitution: this.settings.ballRestitution,
@@ -467,7 +466,7 @@ export class CannonSim {
 		const clampedSpin = Math.max(-1, Math.min(1, spin))
 		this.ballBody.angularVelocity.set(
 			0,
-			clampedSpin * this.settings.maxAngularVelocity,
+			clampedSpin * this.settings.ballMaxAngularVelocity,
 			0,
 		)
 	}
