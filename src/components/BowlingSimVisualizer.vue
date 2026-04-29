@@ -71,6 +71,10 @@ const form = reactive({
 const DIRECTION_YAW_MIN = -15
 const DIRECTION_YAW_MAX = 15
 
+/** Lane X (initial ball horizontal); primary position range slider and paired X number inputs. */
+const POSITION_X_MIN = -0.8
+const POSITION_X_MAX = 0.8
+
 function yawDegFromDirectionXz(d: { x: number; z: number }): number {
 	return (Math.atan2(d.x, d.z) * 180) / Math.PI
 }
@@ -667,22 +671,22 @@ const simInputSubsections = reactive({
 									<input
 										v-model.number="form.position.x"
 										type="range"
-										min="-1"
-										max="1"
+										:min="POSITION_X_MIN"
+										:max="POSITION_X_MAX"
 										step="0.01"
-										aria-label="Ball X position, −1 to 1"
-										title="Horizontal (X) position, −1 to 1"
+										aria-label="Ball X position, −0.8 to 0.8"
+										title="Horizontal (X) position, −0.8 to 0.8"
 									/>
 								</div>
 								<input
 									v-model.number="form.position.x"
 									class="position-x-num"
 									type="number"
-									min="-1"
-									max="1"
+									:min="POSITION_X_MIN"
+									:max="POSITION_X_MAX"
 									step="0.01"
 									aria-label="X position (current value)"
-									title="Current X, −1 to 1"
+									title="Current X, −0.8 to 0.8"
 								/>
 								<button
 									type="button"
@@ -699,7 +703,13 @@ const simInputSubsections = reactive({
 							<div v-show="showPositionAxes" class="position-axes-inputs">
 								<label>
 									<span>X</span>
-									<input v-model.number="form.position.x" type="number" step="0.01" />
+									<input
+										v-model.number="form.position.x"
+										type="number"
+										:min="POSITION_X_MIN"
+										:max="POSITION_X_MAX"
+										step="0.01"
+									/>
 								</label>
 								<label>
 									<span>Y</span>
