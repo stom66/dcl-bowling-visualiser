@@ -2,6 +2,8 @@
 
 This repo splits into a **portable physics + keyframe stack** and an **optional visualizer** (Vue, Three, ECharts). Use the steps below to drop the stack into a Decentraland or other TypeScript project.
 
+For **architecture diagrams**, a **self-contained copy-paste guide** next to the code, and the latest layout of `physics/` (including `types/` and `colliders/`), see [`src/bowling/physics/README.md`](src/bowling/physics/README.md).
+
 ## 1. What to copy (minimal: simulation + compression)
 
 Copy this folder tree and keep **relative paths** between these pieces (or update imports to match your layout):
@@ -54,11 +56,11 @@ const { original, compressed } = getSimulationResults(
 // `compressed` is ready to serialize: ball + per-pin `SimObjectKeyframes`.
 ```
 
-`SimulationResult` and settings types live in `src/bowling/physics/types/bowling-sim.ts` (re-exported via `src/bowling/physics/types/index.ts`).
+`SimulationResult` (return of `getSimulationResults`), `SimulationRunResult` (output of `simulateRoll` / `compressSimulationResult`), and settings types live in `src/bowling/physics/types/bowling-sim.ts` (re-exported via `src/bowling/physics/types/index.ts`).
 
 ## 6. After you move files
 
 - Search for `@/../bowling` (or this repo’s `src/bowling`) and point imports to your new location.
 - Run your project’s `tsc` / build: fix any path or JSON resolution errors first, then DCL- or three-specific types if you split `types/index.ts` from the SDK re-exports.
 
-This keeps a single source of truth: **`physics.cannon-sim` + collider JSON + keyframe optimizer** — the same pipeline this visualiser uses for the compressed playback tracks.
+This keeps a single source of truth: **`physics.pin-layout` + `physics.cannon-sim` + collider JSON + keyframe optimizer** — the same pipeline this visualiser uses for the compressed playback tracks.

@@ -7,8 +7,8 @@ export type {
 	OptimizationSettings,
 	SimObjectKeyframe,
 	SimObjectKeyframes,
-	SimulationComparison,
 	SimulationInput,
 	SimulationResult,
+	SimulationRunResult,
 	SimulationSettings,
 } from './bowling-sim'

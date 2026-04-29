@@ -1,12 +1,12 @@
 import { CannonBowlingPhysicsSimulator } from './physics.cannon-bowling-physics'
-import { PIN_LANE_LOCAL_POSITIONS } from './physics.cannon-sim'
 import { compressSimulationResult } from './physics.keyframe-optimization'
+import { PIN_LANE_LOCAL_POSITIONS } from './physics.pin-layout'
 import { DefaultOptimizationSettings, GameSettings } from './physics.settings'
 import type {
 	BowlingPhysicsSimulator,
 	OptimizationSettings,
-	SimulationComparison,
 	SimulationInput,
+	SimulationResult,
 	SimulationSettings,
 } from './types'
 
@@ -23,7 +23,7 @@ export const DEFAULT_SIMULATION_INPUT: SimulationInput = {
 
 // MARK: getSimulationResults
 /**
- * Runs one roll through the physics simulator, optionally compresses keyframes, and returns original vs compressed.
+ * Runs one roll through the physics simulator, optionally compresses keyframes, and returns a {@link SimulationResult}.
  *
  * @param input Roll parameters.
  * @param simulationOverrides Merged on top of {@link GameSettings}.
@@ -36,7 +36,7 @@ export function getSimulationResults(
 	simulationOverrides?  : Partial<SimulationSettings>,
 	optimizationOverrides?: Partial<OptimizationSettings>,
 	physics               : BowlingPhysicsSimulator = new CannonBowlingPhysicsSimulator(),
-): SimulationComparison {
+): SimulationResult {
 	const simSettings  = resolveSimulationSettings(simulationOverrides ?? {})
 	const optSettings  = resolveOptimizationSettings(optimizationOverrides ?? {})
 	const original     = physics.simulateRoll(input, simSettings, optSettings)

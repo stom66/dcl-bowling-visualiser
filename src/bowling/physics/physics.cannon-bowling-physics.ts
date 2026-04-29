@@ -1,6 +1,6 @@
 import { CannonSim } from './physics.cannon-sim'
 import type { OptimizationSettings, SimulationSettings } from './types'
-import type { BowlingPhysicsSimulator, SimulationInput, SimulationResult } from './types'
+import type { BowlingPhysicsSimulator, SimulationInput, SimulationRunResult } from './types'
 
 
 /**
@@ -15,7 +15,7 @@ export class CannonBowlingPhysicsSimulator implements BowlingPhysicsSimulator {
 		input                  : SimulationInput,
 		simulationSettings     : SimulationSettings,
 		_optimizationSettings  : OptimizationSettings,
-	): SimulationResult {
+	): SimulationRunResult {
 		const sim = new CannonSim(
 			input.position,
 			input.direction,

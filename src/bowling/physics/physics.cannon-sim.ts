@@ -6,13 +6,9 @@ import laneCollidersData from './colliders/lane-colliders.json'
 import pinCollidersData from './colliders/pin-colliders.json'
 import { GameSettings } from './physics.settings'
 import type { SimulationSettings } from './types'
-import {
-	lengthSquared,
-	quaternionToStoredRotation,
-	roundVec3,
-	storedRotationToQuaternion,
-} from './physics.utils'
-import type { QuaternionType, SimulationResult, SimObjectKeyframe, Vector3Type } from './types'
+import {quaternionToStoredRotation,	storedRotationToQuaternion } from './physics.utils'
+import type { QuaternionType, SimulationRunResult, SimObjectKeyframe, Vector3Type } from './types'
+import { TimeLogger } from 'src/shared/utils/timeLogging'
 
 export type CannonSimObjectState = {
 	id      : number
@@ -107,6 +103,13 @@ export const PIN_LANE_LOCAL_POSITIONS: ReadonlyArray<ReadonlyArray<number>> = pi
 /** Cannon cylinder is Y-up at identity; `lookRotation(forward, up)` per @dcl/ecs-math (forward first). */
 const UPRIGHT_PIN_QUATERNION = Quaternion.lookRotation(Vector3.Forward(), Vector3.Up())
 
+/** Bodies at or below this Y are treated as fallen through the lane; stop integrating them. */
+const UNDERGROUND_SLEEP_Y = -0.4
+const LANE_END_Z_SLEEP_Y = 22
+
+/** When the ball is this far along the lane, wake up the pins. */
+const PIN_WAKUP_WHEN_BALL_Z = 17
+
 
 /**
  * Cannon-es world for a single roll (lane, pins, ball).
@@ -118,6 +121,19 @@ export class CannonSim {
 	private readonly pinBodies       : Body[]
 	private readonly initialPinStates: boolean[]
 
+	private currentStep: number = 0
+	private logger: TimeLogger = new TimeLogger()
+
+	// Caches
+	private _ballCache: CannonSimObjectState = {
+		id: 0,
+		position: { x: 0, y: 0, z: 0 },
+		rotation: { x: 0, y: 0, z: 0, w: 1 },
+		velocity: { x: 0, y: 0, z: 0 },
+	}
+	private _pinCache: CannonSimObjectState[] = []
+
+	private pinsHaveBeenWokenUp: boolean = false
 
 	// MARK: constructor
 	/**
@@ -132,10 +148,11 @@ export class CannonSim {
 		pinStates: boolean[] = Array(PIN_LANE_LOCAL_POSITIONS.length).fill(true),
 		settings : SimulationSettings = GameSettings,
 	) {
+
 		this.settings        = settings
 
 		this.world = new World({
-			gravity: new CannonVec3(0, -9.82, 0),
+			gravity: new CannonVec3(0, -9.82, 0)
 		})
 
 		// Add the world colliders
@@ -143,6 +160,7 @@ export class CannonSim {
 		if (this.settings.laneBumpersEnabled) {
 			addStaticBoxCollidersToWorld(this.world, bumperColliders)
 		}
+		this.logger.log('world+collider setup')
 
 		// Configure the pins
 		this.initialPinStates = Array.from(
@@ -167,7 +185,7 @@ export class CannonSim {
 				position      : new CannonVec3(lanePosition[0], lanePosition[1], lanePosition[2]),
 				quaternion    : new CannonQuaternion(0, 0, 0, 1),
 				linearDamping : 0.05,
-				angularDamping: 0.2,
+				angularDamping: 0.2
 			})
 
 			pinBody.id = index
@@ -180,10 +198,13 @@ export class CannonSim {
 				),
 			)
 			pinBody.shapes[0]!.material = pinMaterial
+			pinBody.sleep()
 
 			this.world.addBody(pinBody)
 			this.pinBodies.push(pinBody)
 		}
+
+		this.logger.log('pin setup')
 
 		this.ballBody = new Body({
 			mass          : this.settings.ballMass,
@@ -206,17 +227,104 @@ export class CannonSim {
 	// MARK: advance
 	/**
 	 * Integrates the world forward by `dt` seconds, using `simSubSteps` substeps from settings.
+	 * Massively over-optimnised here, aiming for zero-allocations
+	 * Probably overkill, but eh, it's only sacrificing readability and who needs that?!
 	 */
 	advance(dt: number): CannonSimAdvanceResult {
-		const subSteps = Math.max(1, Math.floor(this.settings.simSubSteps))
+		this.currentStep++
+
+		const subSteps = this.settings.simSubSteps | 0
 		const subDt = dt / subSteps
-		for (let i = 0; i < subSteps; i++) {
-			this.world.step(subDt, undefined)
+
+		// localise refs
+		const ball  = this.ballBody
+		const pins  = this.pinBodies
+
+		// Do pins need to wake up?
+		if (!this.pinsHaveBeenWokenUp) {
+			if (ball.position.z > PIN_WAKUP_WHEN_BALL_Z) {
+				this.pinsHaveBeenWokenUp = true
+				for (const pin of pins) {
+					pin.wakeUp()
+				}
+			}
 		}
 
+		// step physics
+		for (let i = 0; i < subSteps; i++) this.world.step(subDt, undefined)
+
+		if (ball.position.y < UNDERGROUND_SLEEP_Y || ball.position.z > LANE_END_Z_SLEEP_Y) {
+			ball.velocity.set(0, 0, 0)
+			ball.angularVelocity.set(0, 0, 0)
+			ball.sleep()
+		}
+		for (let i = 0; i < pins.length; i++) {
+			const pinBody = pins[i]!
+			if (pinBody.position.y < UNDERGROUND_SLEEP_Y || pinBody.position.z > LANE_END_Z_SLEEP_Y) {
+				pinBody.velocity.set(0, 0, 0)
+				pinBody.angularVelocity.set(0, 0, 0)
+				pinBody.sleep()
+			}
+		}
+
+		// BALL - write to cache - directly, instead of creating a new object and copying it
+		const bp = ball.position
+		const bq = ball.quaternion
+		const bv = ball.velocity
+		const bCache = this._ballCache
+		bCache.id = ball.id
+		bCache.position.x = bp.x
+		bCache.position.y = bp.y
+		bCache.position.z = bp.z
+		bCache.rotation.x = bq.x
+		bCache.rotation.y = bq.y
+		bCache.rotation.z = bq.z
+		bCache.rotation.w = bq.w
+		bCache.velocity.x = bv.x
+		bCache.velocity.y = bv.y
+		bCache.velocity.z = bv.z
+
+
+		// PINS - write to cache, again directly
+		const pCache = this._pinCache
+		const pCount = pins.length
+
+		// Clear and rebuild the pin cache
+		if (pCache.length !== pCount) {
+			pCache.length = pCount
+			for (let i = 0; i < pCount; i++) {
+				pCache[i] = {
+					id: 0,
+					position: { x: 0, y: 0, z: 0 },
+					rotation: { x: 0, y: 0, z: 0, w: 1 },
+					velocity: { x: 0, y: 0, z: 0 },
+				}
+			}
+		}
+
+		for (let i = 0; i < pCount; i++) {
+			const body = pins[i]
+			const out = pCache[i]
+
+			const p = body.position
+			const q = body.quaternion
+			const v = body.velocity
+			out.id = body.id
+			out.position.x = p.x
+			out.position.y = p.y
+			out.position.z = p.z
+			out.rotation.x = q.x
+			out.rotation.y = q.y
+			out.rotation.z = q.z
+			out.rotation.w = q.w
+			out.velocity.x = v.x
+			out.velocity.y = v.y
+			out.velocity.z = v.z
+		}
+		
 		return {
-			ball: this.getBodyTransform(this.ballBody),
-			pins: this.pinBodies.map((body) => this.getBodyTransform(body)),
+			ball: bCache,
+			pins: pCache,
 		}
 	}
 
@@ -225,13 +333,13 @@ export class CannonSim {
 	/**
 	 * Samples the roll into keyframes until idle or for the given `duration` (capped by settings and idle detection).
 	 */
-	simulate(duration: number = this.settings.simDuration): SimulationResult {
+	simulate(duration: number = this.settings.simDuration): SimulationRunResult {
 		const stepTime            = 1 / this.settings.simFrameRate
 		const totalSteps          = Math.floor(duration / stepTime)
-		const computeStartedAt    = performance.now()
+		const computeStartedAt    = Date.now()
 		let framesWithoutVelocity = 0
 
-		const result: SimulationResult = {
+		const result: SimulationRunResult = {
 			ballKeyframes: {
 				index    : 0,
 				label    : 'Ball',
@@ -246,59 +354,68 @@ export class CannonSim {
 			computeTimeMs  : 0,
 		}
 
+		
 		for (let stepIndex = 0; stepIndex < totalSteps; stepIndex += 1) {
 			let hasVelocity = false
 			const step      = this.advance(stepTime)
 
+			if (this.currentStep % 100 == 0) this.logger.log(`step ${this.currentStep} - advanced`)
+
 			result.ballKeyframes.keyframes.push({
 				time    : this.world.time,
-				position: roundVec3(step.ball.position, this.settings.decimalPlaces),
-				rotation: roundVec3(
-					quaternionToStoredRotation(step.ball.rotation),
-					this.settings.decimalPlaces,
-				),
+				position: {x: step.ball.position.x, y: step.ball.position.y, z: step.ball.position.z},
+				rotation: quaternionToStoredRotation(step.ball.rotation)
 			})
+			//if (this.currentStep % 100 == 0) this.logger.log(`step ${this.currentStep} - ball keyframes`)
 
-			if (lengthSquared(step.ball.velocity) > this.settings.velocityRestEpsilon) {
+			// Check ball velocity
+			const vB = this.ballBody.velocity
+			const vB2 = vB.x * vB.x + vB.y * vB.y + vB.z * vB.z
+			if (vB2 > this.settings.velocityRestEpsilon) {
 				hasVelocity = true
 			}
-			if (!hasVelocity) {
+			// Checks angular velocity when looking for velocity, overkill, disabled
+			/* if (!hasVelocity) {
 				const av     = this.ballBody.angularVelocity
 				const omega2 = av.x * av.x + av.y * av.y + av.z * av.z
 				if (omega2 > this.settings.velocityRestEpsilon) {
 					hasVelocity = true
 				}
-			}
+			} */
+			
+			//if (this.currentStep % 100 == 0) this.logger.log(`step ${this.currentStep} - velocity check`)
 
 			for (const pin of step.pins) {
-				const track = result.pinsKeyframes[pin.id]
-				if (!track) {
-					continue
-				}
+				const pinTrack = result.pinsKeyframes[pin.id]
+				if (!pinTrack) continue
 
 				const keyframe: SimObjectKeyframe = {
 					time    : this.world.time,
-					position: roundVec3(pin.position, this.settings.decimalPlaces),
-					rotation: roundVec3(
-						quaternionToStoredRotation(pin.rotation),
-						this.settings.decimalPlaces,
-					),
+					position: {x: pin.position.x, y: pin.position.y, z: pin.position.z},
+					rotation: quaternionToStoredRotation(pin.rotation)
 				}
-				track.keyframes.push(keyframe)
+				pinTrack.keyframes.push(keyframe)
+				//if (this.currentStep % 100 == 0) this.logger.log(`step ${this.currentStep} - pin ${pin.id} keyframes`)
 
-				if (!hasVelocity && lengthSquared(pin.velocity) > this.settings.velocityRestEpsilon) {
-					hasVelocity = true
+				if (!hasVelocity) {
+					const v = this.pinBodies[pin.id].velocity
+					const v2 = v.x * v.x + v.y * v.y + v.z * v.z
+					if (v2 > this.settings.velocityRestEpsilon) hasVelocity = true
 				}
+				//if (this.currentStep % 100 == 0) this.logger.log(`step ${this.currentStep} - pin ${pin.id} velocity check`)
 			}
 
 			framesWithoutVelocity = hasVelocity ? 0 : framesWithoutVelocity + 1
-			if (framesWithoutVelocity > this.settings.idleFrameCap) {
-				break
-			}
+			if (framesWithoutVelocity > this.settings.idleFrameCap) break
+			
+			if (this.currentStep % 100 == 0) this.logger.log(`step ${this.currentStep} - frames without velocity check`)
 		}
+		
+		this.logger.log(`step ${this.currentStep} - simulate complete`)
 
 		for (const track of result.pinsKeyframes) {
-			const lastKeyframe = track.keyframes.at(-1)
+			const kfs          = track.keyframes
+			const lastKeyframe = kfs.length > 0 ? kfs[kfs.length - 1] : undefined
 			const lastQuat =
 				lastKeyframe?.rotation !== undefined
 					? storedRotationToQuaternion(lastKeyframe.rotation)
@@ -311,8 +428,13 @@ export class CannonSim {
 				Math.abs(Quaternion.dot(lastQuat, UPRIGHT_PIN_QUATERNION)) > 0.95
 			)
 		}
+		
+		this.logger.log(`step ${this.currentStep} - final pin states computed`)
 
-		result.computeTimeMs = performance.now() - computeStartedAt
+		result.computeTimeMs = Date.now() - computeStartedAt
+
+		// DEBUG: log timings
+		this.logger.print()
 		return result
 	}
 
@@ -348,29 +470,5 @@ export class CannonSim {
 			clampedSpin * this.settings.maxAngularVelocity,
 			0,
 		)
-	}
-
-
-	// MARK: getBodyTransform
-	private getBodyTransform(body: Body): CannonSimObjectState {
-		return {
-			id      : body.id,
-			position: {
-				x: body.position.x,
-				y: body.position.y,
-				z: body.position.z,
-			},
-			rotation: {
-				x: body.quaternion.x,
-				y: body.quaternion.y,
-				z: body.quaternion.z,
-				w: body.quaternion.w,
-			},
-			velocity: {
-				x: body.velocity.x,
-				y: body.velocity.y,
-				z: body.velocity.z,
-			},
-		}
 	}
 }

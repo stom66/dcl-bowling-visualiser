@@ -1,5 +1,5 @@
 import { DEFAULT_STORED_ROTATION, quaternionToStoredRotation, storedRotationToQuaternion } from './physics.utils'
-import type { OptimizationSettings, QuaternionType, SimulationResult, SimObjectKeyframe, SimObjectKeyframes, Vector3Type } from './types'
+import type { OptimizationSettings, QuaternionType, SimulationRunResult, SimObjectKeyframe, SimObjectKeyframes, Vector3Type } from './types'
 
 /**
  * `keyframeReductionEpsilon` is in **world units** (meters) for position. For rotation, stored Euler
@@ -72,9 +72,9 @@ const PRECONTACT_KEY_TIME_DEDUP = 1e-4
 
 /**
  * Two RDP passes; **kept** sample indices are merged by union. A keyframe at time T only stores `position` if the
- * position RDP pass kept that index, and `rotation` if the rotation pass kept it—so a straight pre-stroke path can
- * use ~2 **position** anchors on the wire while interleaved rotation keys carry spin; playback interposes in time
- * (see `materializeKeyframes`).
+ * position RDP pass kept that index, and `rotation` if the rotation pass kept it. Position error is vs the **time
+ * chord** (lerp between endpoints at each sample time), matching playback — not 3D distance to a spatial line through
+ * endpoints (colinear motion in space would otherwise collapse to two keys and drift in time).
  */
 export function rdpSimplifyMaterializedTrack(
 	samples: MaterializedRdpSample[],
@@ -184,11 +184,11 @@ export function rdpSimplifyKeyframeTrack(
 
 // MARK: compressSimulationResult
 export function compressSimulationResult(
-	result: SimulationResult,
+	result: SimulationRunResult,
 	optimization: OptimizationSettings,
-): SimulationResult {
-	const compressStartedAt = performance.now()
-	const out: SimulationResult = {
+): SimulationRunResult {
+	const compressStartedAt = Date.now()
+	const out: SimulationRunResult = {
 		ballKeyframes : compressTrack(result.ballKeyframes, optimization),
 		pinsKeyframes : result.pinsKeyframes.map((track) => injectPrecontactRestAnchorForPinTrack(
 			track,
@@ -196,7 +196,7 @@ export function compressSimulationResult(
 			optimization,
 		)),
 		finalPinStates: [...result.finalPinStates],
-		computeTimeMs : performance.now() - compressStartedAt,
+		computeTimeMs : Date.now() - compressStartedAt,
 	}
 	return out
 }
@@ -225,7 +225,7 @@ export function compressTrack(
  * RDP+dedup can leave one early key and one late key. Time-based interpolation (lerp/slerp) over that span makes
  * pins “ease” or drift before real contact. Using the *original* (full) sim track, we find the last sample that is
  * at rest (vs t=0 materialized sample) before the first real motion, then insert a *full* position+rotation key at that time into the *compressed* track, so
- * hold segments stay flat through precontact.
+ * hold segments stay flat through precontact. “Motion” uses **XZ** distance for position (lane sliding), not Y jitter.
  */
 function injectPrecontactRestAnchorForPinTrack(
 	originalTrack: SimObjectKeyframes,
@@ -258,9 +258,9 @@ function injectPrecontactRestAnchorForPinTrack(
 	let firstJ  = -1
 	for (let j = 1; j < samples.length; j += 1) {
 		const s = samples[j]!
+		// Lane-local sliding is XZ; Y-only jitter from the solver should not mark “motion” before contact.
 		const d = Math.hypot(
 			s.position.x - p0.x,
-			s.position.y - p0.y,
 			s.position.z - p0.z,
 		)
 		const a = quatGeodesicAngleRad(q0, s.rotation)
@@ -323,7 +323,7 @@ export function countTrackKeyframes(track: SimObjectKeyframes): number {
 }
 
 // MARK: countSimulationKeyframes
-export function countSimulationKeyframes(result: SimulationResult): number {
+export function countSimulationKeyframes(result: SimulationRunResult): number {
 	return (
 		countTrackKeyframes(result.ballKeyframes) +
 		result.pinsKeyframes.reduce((sum, track) => sum + countTrackKeyframes(track), 0)
@@ -418,27 +418,17 @@ function unwrapQuaternionHemisphere(samples: MaterializedRdpSample[]) {
 }
 
 
-// MARK: distPointToLine3D
-/** Perpendicular distance from p to the infinite 3D line through a and b. Collinear points yield ~0. */
-function distPointToLine3D(
-	p         : Vector3Type,
-	a         : Vector3Type,
-	b         : Vector3Type,
-): number {
-	const abx = b.x - a.x
-	const aby = b.y - a.y
-	const abz = b.z - a.z
-	const apx = p.x - a.x
-	const apy = p.y - a.y
-	const apz = p.z - a.z
-	const ab2 = abx * abx + aby * aby + abz * abz
-	if (ab2 <= 1e-24) {
-		return Math.hypot(apx, apy, apz)
+// MARK: lerpVec3TimeChord
+function lerpVec3TimeChord(
+	a: Vector3Type,
+	b: Vector3Type,
+	t: number,
+): Vector3Type {
+	return {
+		x: a.x + (b.x - a.x) * t,
+		y: a.y + (b.y - a.y) * t,
+		z: a.z + (b.z - a.z) * t,
 	}
-	const cx = apy * abz - apz * aby
-	const cy = apz * abx - apx * abz
-	const cz = apx * aby - apy * abx
-	return Math.hypot(cx, cy, cz) / Math.sqrt(ab2)
 }
 
 
@@ -531,8 +521,15 @@ function rdpRecursePosition(
 	let maxD  = 0
 	let bestK = i0 + 1
 	for (let k = i0 + 1; k < j0; k += 1) {
-		const pK = samples[k]!.position
-		const d  = distPointToLine3D(pK, pI, pJ)
+		const tK  = samples[k]!.time
+		const u   = (tK - tI) / span
+		const pK  = samples[k]!.position
+		const pHat = lerpVec3TimeChord(pI, pJ, u)
+		const d = Math.hypot(
+			pK.x - pHat.x,
+			pK.y - pHat.y,
+			pK.z - pHat.z,
+		)
 		if (d > maxD) {
 			maxD = d
 			bestK = k

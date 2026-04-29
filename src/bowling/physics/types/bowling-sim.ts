@@ -26,8 +26,8 @@ export type SimulationInput = {
 	strength : number	
 }
 
-/** Full keyframe set from physics (original) or after optimizer reduction (compressed). */
-export type SimulationResult = {
+/** One physics or compression path: ball + pin keyframes, final pin states, timing. */
+export type SimulationRunResult = {
 	ballKeyframes : SimObjectKeyframes
 	pinsKeyframes : SimObjectKeyframes[]
 	finalPinStates: boolean[]
@@ -35,9 +35,10 @@ export type SimulationResult = {
 	computeTimeMs : number
 }
 
-export type SimulationComparison = {
-	original         : SimulationResult
-	compressed       : SimulationResult
+/** Return of `getSimulationResults`: raw and optional keyframe-reduced tracks plus pin bookkeeping. */
+export type SimulationResult = {
+	original         : SimulationRunResult
+	compressed       : SimulationRunResult
 	finalPinStates   : boolean[]
 	startingPinStates: boolean[]
 }
@@ -46,14 +47,14 @@ export type SimulationComparison = {
 export type OptimizationSettings = {
 	/**
 	 * When false, the keyframe reduction pipeline is skipped and `getSimulationResults` uses the same
-	 * `SimulationResult` for both `original` and `compressed`. Physically ignored by the simulator; host-only.
+	 * `SimulationRunResult` for both `original` and `compressed`. Physically ignored by the simulator; host-only.
 	 */
 	keyframeOptimizationEnabled      : boolean
 	/** Meters. Flat dedup: middle keyframe dropped if prev/mid/next equal for position, or equal for rotation (Euler) via quaternion round-trip. */
 	keyframeReductionEpsilon         : number
 	/**
-	 * R–D–P: max perpendicular distance in space from each sample to the line through segment endpoints (m). Non-finite
-	 * or negative (e.g. `-1`) disables the position term in the combined score; rotation can still drive simplification.
+	 * R–D–P: max **position** error (m) vs linear-in-time interpolation between segment endpoints — same metric as
+	 * playback lerp. Non-finite or negative (e.g. `-1`) disables the position term; rotation can still drive simplification.
 	 */
 	keyframeRdpMaxPositionErrorM     : number
 	/**
@@ -61,13 +62,14 @@ export type OptimizationSettings = {
 	 */
 	keyframeRdpMaxRotationErrorDeg   : number
 	/**
-	 * Precontact anchor: min position delta (m) from the first materialized sample to count as “motion.” Use `-1`
+	 * Precontact anchor: min **horizontal (XZ)** position delta (m) from t=0 on pin tracks to count as “motion.” Use `-1`
 	 * to ignore position (use rotation only if that is not also `-1`).
 	 */
 	keyframePrecontactMotionMinPosM  : number
 	/**
-	 * Precontact anchor: min geodesic rotation (°) from t=0. `-1` = ignore rotation (position only). If **both** this
-	 * and {@link keyframePrecontactMotionMinPosM} are `-1`, the precontact anchor pass is skipped.
+	 * Precontact anchor: min geodesic rotation (°) from t=0. Values under ~1–2° often match solver noise and fire the
+	 * anchor too early (compressed playback then lerps/slerps before the real hit). `-1` = ignore rotation (position only).
+	 * If **both** this and {@link keyframePrecontactMotionMinPosM} are `-1`, the precontact anchor pass is skipped.
 	 */
 	keyframePrecontactMotionMinRotDeg: number
 }
@@ -103,7 +105,7 @@ export type SimulationSettings = {
 }
 
 /**
- * Produces a full `SimulationResult` (ball + pin keyframes, final pin states) for one roll.
+ * Produces a full `SimulationRunResult` (ball + pin keyframes, final pin states) for one roll.
  * Implement with Cannon-es, Rapier, etc. `optimizationSettings` is passed through so callers keep one pipeline shape;
  * engines may ignore it if they do not apply optimizer tunables during sampling.
  */
@@ -112,5 +114,5 @@ export interface BowlingPhysicsSimulator {
 		input               : SimulationInput,
 		simulationSettings  : SimulationSettings,
 		optimizationSettings: OptimizationSettings,
-	): SimulationResult
+	): SimulationRunResult
 }
