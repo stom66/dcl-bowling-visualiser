@@ -2,17 +2,17 @@
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import * as THREE from 'three'
 
-import { PIN_LANE_LOCAL_POSITIONS } from '../bowling/physics/physics.cannon-sim'
+import { PIN_LANE_LOCAL_POSITIONS } from '../bowling/physics/physics.pin-layout'
 import bumperCollidersJson from '../bowling/physics/colliders/bumper-colliders.json'
 import laneCollidersJson from '../bowling/physics/colliders/lane-colliders.json'
 import pinCollidersJson from '../bowling/physics/colliders/pin-colliders.json'
 import { GameSettings } from '../bowling/physics/physics.settings'
 import { maxPlaybackTime, samplePlaybackAtTime } from '../bowling/visualizer/playback-sample'
-import type { SimulationComparison } from '../bowling/physics/types'
+import type { SimulationResult } from '../bowling/physics/types'
 
 const props = withDefaults(
 	defineProps<{
-		comparison: SimulationComparison
+		simulationResult: SimulationResult
 		enabledPins: boolean[]
 		/** Per index: pin was included in the simulated rack (false = no body, hide mesh). */
 		startingPinStates: boolean[]
@@ -36,7 +36,7 @@ const loopPlayback = ref(false)
 const showColliderWireframes = ref(false)
 
 const activeResult = computed(() =>
-	playbackSource.value === 'original' ? props.comparison.original : props.comparison.compressed,
+	playbackSource.value === 'original' ? props.simulationResult.original : props.simulationResult.compressed,
 )
 
 const durationMax = computed(() => maxPlaybackTime(activeResult.value))
@@ -625,7 +625,7 @@ onUnmounted(() => {
 })
 
 watch(
-	() => props.comparison,
+	() => props.simulationResult,
 	() => {
 		playbackTime.value = Math.min(playbackTime.value, durationMax.value)
 		if (durationMax.value <= 0) {

@@ -1,7 +1,7 @@
 import { storedRotationToQuaternion } from 'src/bowling/physics/physics.utils'
 import type {
 	QuaternionType,
-	SimulationResult,
+	SimulationRunResult,
 	SimObjectKeyframe,
 	SimObjectKeyframes,
 	Vector3Type,
@@ -226,14 +226,15 @@ export function sampleTrackAtTime(
 // MARK: maxTrackTime
 /** Latest `time` among keyframes in `track`, or `0` if empty. */
 export function maxTrackTime(track: SimObjectKeyframes): number {
-	const last = track.keyframes.at(-1)
+	const kfs  = track.keyframes
+	const last = kfs.length > 0 ? kfs[kfs.length - 1] : undefined
 	return last?.time ?? 0
 }
 
 
 // MARK: maxPlaybackTime
 /** Maximum end time across the ball track and all pin tracks in `result`. */
-export function maxPlaybackTime(result: SimulationResult): number {
+export function maxPlaybackTime(result: SimulationRunResult): number {
 	let maxT = maxTrackTime(result.ballKeyframes)
 	for (const pinTrack of result.pinsKeyframes) {
 		maxT = Math.max(maxT, maxTrackTime(pinTrack))
@@ -256,7 +257,7 @@ export type PlaybackSample = {
 // MARK: samplePlaybackAtTime
 /** Ball + all pin poses at `time`; missing pins are `null`. */
 export function samplePlaybackAtTime(
-	result : SimulationResult,
+	result : SimulationRunResult,
 	time   : number,
 ): PlaybackSample {
 	const ballSample = sampleTrackAtTime(result.ballKeyframes, time)

@@ -13,7 +13,7 @@ import {
 	type DatasetKey,
 	type EntityKind,
 } from '../bowling/visualizer/chart-model'
-import { PIN_LANE_LOCAL_POSITIONS } from '../bowling/physics/physics.cannon-sim'
+import { PIN_LANE_LOCAL_POSITIONS } from '../bowling/physics/physics.pin-layout'
 import { DEFAULT_SIMULATION_INPUT, getSimulationResults } from '../bowling/physics/physics.client'
 import { DefaultOptimizationSettings, GameSettings } from '../bowling/physics/physics.settings'
 import type { ChannelKey } from '../bowling/visualizer/keyframe-channels'
@@ -302,7 +302,7 @@ const activeChannelsTitle = computed(() => {
 	}
 	return ch.map((c) => channelLabel(c)).join(' · ')
 })
-const comparison = ref(
+const simulationResult = ref(
 	getSimulationResults(
 		DEFAULT_SIMULATION_INPUT,
 		tuningSimulationOverrides(),
@@ -310,10 +310,10 @@ const comparison = ref(
 	),
 )
 
-const chartModel = computed(() => buildSimulationChartModel(comparison.value))
+const chartModel = computed(() => buildSimulationChartModel(simulationResult.value))
 
 /** One `notifyPlayerRollPlayback` message: envelope + binary body + wrapper byte (authoritative server layout). */
-const messageBusRollPlayback = computed(() => estimateRollPlaybackWireSizes(comparison.value))
+const messageBusRollPlayback = computed(() => estimateRollPlaybackWireSizes(simulationResult.value))
 
 function filterVisibleChartSeries(seriesList: ChartSeries[]): ChartSeries[] {
 	return seriesList.filter((series) => {
@@ -454,7 +454,7 @@ const chartEchartsRemountKey = computed(() => {
 })
 
 function runSimulation(): void {
-	comparison.value = getSimulationResults(
+	simulationResult.value = getSimulationResults(
 		currentInput(),
 		tuningSimulationOverrides(),
 		optimizationOverridesFromTuning(),
@@ -1293,10 +1293,10 @@ const sectionOpen = reactive({
 					<div v-show="sectionOpen.threePlayback" id="panel-three-playback" class="panel-collapsible">
 						<BowlingThreeViewport
 							hide-intro-heading
-							:comparison="comparison"
+							:simulation-result="simulationResult"
 							:enabled-pins="visibility.enabledPins"
 							:lane-bumpers-enabled="tuning.laneBumpersEnabled"
-							:starting-pin-states="comparison.startingPinStates"
+							:starting-pin-states="simulationResult.startingPinStates"
 						/>
 					</div>
 				</div>
@@ -1361,7 +1361,7 @@ const sectionOpen = reactive({
 							</div>
 							<div class="panel metric-card">
 								<span class="metric-label">Physics compute</span>
-								<strong>{{ comparison.original.computeTimeMs.toFixed(1) }} ms</strong>
+								<strong>{{ simulationResult.original.computeTimeMs.toFixed(1) }} ms</strong>
 							</div>
 						</div>
 						<h3 class="summary-subheading summary-subheading--bus">Payload (binary wire)</h3>
@@ -1380,7 +1380,7 @@ const sectionOpen = reactive({
 							</div>
 							<div class="panel metric-card">
 								<span class="metric-label">Keyframe compress</span>
-								<strong>{{ comparison.compressed.computeTimeMs.toFixed(2) }} ms</strong>
+								<strong>{{ simulationResult.compressed.computeTimeMs.toFixed(2) }} ms</strong>
 							</div>
 						</div>
 					</div>

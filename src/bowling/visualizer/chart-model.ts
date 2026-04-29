@@ -1,6 +1,6 @@
 import { countSimulationKeyframes } from 'src/bowling/physics/physics.keyframe-optimization'
 import type { ChannelKey } from 'src/bowling/visualizer/keyframe-channels'
-import type { SimulationComparison, SimObjectKeyframe, SimObjectKeyframes } from 'src/bowling/physics/types'
+import type { SimulationResult, SimObjectKeyframe, SimObjectKeyframes } from 'src/bowling/physics/types'
 
 export type DatasetKey = 'original' | 'compressed'
 export type EntityKind = 'ball' | 'pin'
@@ -62,25 +62,25 @@ export const CHANNEL_OPTIONS: Array<{ value: ChannelKey; label: string }> = [
 
 // MARK: buildSimulationChartModel
 /**
- * Builds per-channel ECharts series, per-entity stats, and aggregate stats from a simulation comparison payload.
+ * Builds per-channel ECharts series, per-entity stats, and aggregate stats from a `getSimulationResults` payload.
  */
-export function buildSimulationChartModel(comparison: SimulationComparison): SimulationChartModel {
+export function buildSimulationChartModel(simulationResult: SimulationResult): SimulationChartModel {
 	const trackPairs = [
 		{
 			key: 'ball',
-			label: comparison.original.ballKeyframes.label,
+			label: simulationResult.original.ballKeyframes.label,
 			entityKind: 'ball' as const,
-			entityIndex: comparison.original.ballKeyframes.index,
-			original: comparison.original.ballKeyframes,
-			compressed: comparison.compressed.ballKeyframes,
+			entityIndex: simulationResult.original.ballKeyframes.index,
+			original: simulationResult.original.ballKeyframes,
+			compressed: simulationResult.compressed.ballKeyframes,
 		},
-		...comparison.original.pinsKeyframes.map((track, index) => ({
+		...simulationResult.original.pinsKeyframes.map((track, index) => ({
 			key: `pin-${track.index}`,
 			label: track.label,
 			entityKind: 'pin' as const,
 			entityIndex: track.index,
 			original: track,
-			compressed: comparison.compressed.pinsKeyframes[index]!,
+			compressed: simulationResult.compressed.pinsKeyframes[index]!,
 		})),
 	]
 
@@ -89,8 +89,8 @@ export function buildSimulationChartModel(comparison: SimulationComparison): Sim
 		CHANNEL_OPTIONS.map(({ value }) => [value, buildSeriesForChannel(trackPairs, value)]),
 	) as Record<ChannelKey, ChartSeries[]>
 
-	const originalKeyframes = countSimulationKeyframes(comparison.original)
-	const compressedKeyframes = countSimulationKeyframes(comparison.compressed)
+	const originalKeyframes = countSimulationKeyframes(simulationResult.original)
+	const compressedKeyframes = countSimulationKeyframes(simulationResult.compressed)
 
 	return {
 		seriesByChannel,
@@ -100,8 +100,8 @@ export function buildSimulationChartModel(comparison: SimulationComparison): Sim
 			compressedKeyframes,
 			savedKeyframes: originalKeyframes - compressedKeyframes,
 			reductionPercent: percentage(originalKeyframes - compressedKeyframes, originalKeyframes),
-			standingPins: comparison.finalPinStates.filter(Boolean).length,
-			knockedPins: comparison.finalPinStates.filter((state) => !state).length,
+			standingPins: simulationResult.finalPinStates.filter(Boolean).length,
+			knockedPins: simulationResult.finalPinStates.filter((state) => !state).length,
 			channelStats: CHANNEL_OPTIONS.map(({ value }) => buildAggregateChannelStats(trackPairs, value)),
 		},
 	}

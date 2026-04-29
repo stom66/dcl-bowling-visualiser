@@ -16,7 +16,7 @@
 import { ReadWriteByteBuffer } from '@dcl/ecs/dist/serialization/ByteBuffer'
 import { Schemas } from '@dcl/sdk/ecs'
 
-import type { SimulationComparison, SimulationResult, SimObjectKeyframe } from 'src/bowling/physics/types'
+import type { SimulationResult, SimulationRunResult, SimObjectKeyframe } from 'src/bowling/physics/types'
 
 /** Same event string as `MessageType.NOTIFY_PLAYER_ROLL_PLAYBACK` in authoritative bowling. */
 export const NOTIFY_PLAYER_ROLL_PLAYBACK = 'notifyPlayerRollPlayback'
@@ -98,7 +98,7 @@ function keyframeToWire(kf: SimObjectKeyframe): {
 }
 
 export function buildRollPlaybackPayload(
-	result: SimulationResult,
+	result: SimulationRunResult,
 	startingPinStates: boolean[],
 	meta: RollPlaybackWireMeta,
 ) {
@@ -152,18 +152,18 @@ export type RollPlaybackWireSizeEstimate = {
  * Uses a fixed `timestampMs` so two payloads differ only by keyframe data (fair diff).
  */
 export function estimateRollPlaybackWireSizes(
-	comparison: SimulationComparison,
+	simulationResult: SimulationResult,
 	meta: RollPlaybackWireMeta = DEFAULT_ROLL_PLAYBACK_WIRE_META,
 	timestampMs: number = 1_700_000_000_000,
 ): RollPlaybackWireSizeEstimate {
 	const originalPayload = buildRollPlaybackPayload(
-		comparison.original,
-		comparison.startingPinStates,
+		simulationResult.original,
+		simulationResult.startingPinStates,
 		meta,
 	)
 	const compressedPayload = buildRollPlaybackPayload(
-		comparison.compressed,
-		comparison.startingPinStates,
+		simulationResult.compressed,
+		simulationResult.startingPinStates,
 		meta,
 	)
 
