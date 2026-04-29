@@ -66,7 +66,7 @@ const form = reactive({
 
 /**
  * Aim yaw in degrees, right-hand about +Y: 0° = (0, 0, 1) straight +Z; +90° = (1, 0, 0) +X; +45° ≈ (0.707, 0, 0.707) normalized.
- * The slider and top-down SVG use the same θ as `form.direction` in the XZ plane.
+ * The range and nudge controls use the same θ as `form.direction` in the XZ plane.
  */
 const DIRECTION_YAW_MIN = -15
 const DIRECTION_YAW_MAX = 15
@@ -105,12 +105,6 @@ watch(
 	{ immediate: true },
 )
 
-const showAimCompass = ref(false)
-
-function toggleAimCompass(): void {
-	showAimCompass.value = !showAimCompass.value
-}
-
 /** When true, show full X, Y, Z numeric fields (default: compact X range slider only). */
 const showPositionAxes = ref(false)
 
@@ -121,62 +115,6 @@ function togglePositionAxes(): void {
 function toggleLaneBumpers(): void {
 	tuning.laneBumpersEnabled = !tuning.laneBumpersEnabled
 	runSimulation()
-}
-
-const directionSvgRef = ref<SVGSVGElement | null>(null)
-let directionPointerActive = false
-
-const directionArrowTip = computed(() => {
-	const rad = (directionYawDeg.value * Math.PI) / 180
-	// Match top-down XZ: +Z is “up” on the SVG (−y), +X is to the right — same sense as the slider.
-	return { x2: 50 + 36 * Math.sin(rad), y2: 50 - 36 * Math.cos(rad) }
-})
-
-function applyPointerToYaw(e: PointerEvent): void {
-	const svg = directionSvgRef.value
-	if (!svg) {
-		return
-	}
-	const p = svg.createSVGPoint()
-	p.x = e.clientX
-	p.y = e.clientY
-	const ctm = svg.getScreenCTM()
-	if (!ctm) {
-		return
-	}
-	const t = p.matrixTransform(ctm.inverse())
-	const dx = t.x - 50
-	const dz = -(t.y - 50)
-	directionYawDeg.value = clampDirectionYaw((Math.atan2(dx, dz) * 180) / Math.PI)
-}
-
-function onDirectionPointerDown(e: PointerEvent): void {
-	const svg = directionSvgRef.value
-	if (!svg) {
-		return
-	}
-	directionPointerActive = true
-	svg.setPointerCapture(e.pointerId)
-	applyPointerToYaw(e)
-}
-
-function onDirectionPointerMove(e: PointerEvent): void {
-	if (!directionPointerActive) {
-		return
-	}
-	applyPointerToYaw(e)
-}
-
-function onDirectionPointerUp(e: PointerEvent): void {
-	if (!directionPointerActive) {
-		return
-	}
-	directionPointerActive = false
-	try {
-		directionSvgRef.value?.releasePointerCapture(e.pointerId)
-	} catch {
-		/* ignore */
-	}
 }
 
 function nudgeDirectionYaw(delta: number): void {
@@ -205,6 +143,7 @@ const tuning = reactive({
 	keyframeRdpMaxRotationErrorDeg: DefaultOptimizationSettings.keyframeRdpMaxRotationErrorDeg,
 	keyframePrecontactMotionMinPosM: DefaultOptimizationSettings.keyframePrecontactMotionMinPosM,
 	keyframePrecontactMotionMinRotDeg: DefaultOptimizationSettings.keyframePrecontactMotionMinRotDeg,
+	keyframeOptimizationEnabled: DefaultOptimizationSettings.keyframeOptimizationEnabled,
 })
 
 function tuningSimulationOverrides(): Partial<SimulationSettings> {
@@ -226,6 +165,7 @@ function tuningSimulationOverrides(): Partial<SimulationSettings> {
 
 function optimizationOverridesFromTuning(): Partial<OptimizationSettings> {
 	return {
+		keyframeOptimizationEnabled: tuning.keyframeOptimizationEnabled,
 		keyframeReductionEpsilon: tuning.keyframeReductionEpsilon,
 		keyframeRdpMaxPositionErrorM: tuning.keyframeRdpMaxPositionErrorM,
 		keyframeRdpMaxRotationErrorDeg: tuning.keyframeRdpMaxRotationErrorDeg,
@@ -499,6 +439,7 @@ function resetDefaults(): void {
 	tuning.keyframeRdpMaxRotationErrorDeg = DefaultOptimizationSettings.keyframeRdpMaxRotationErrorDeg
 	tuning.keyframePrecontactMotionMinPosM = DefaultOptimizationSettings.keyframePrecontactMotionMinPosM
 	tuning.keyframePrecontactMotionMinRotDeg = DefaultOptimizationSettings.keyframePrecontactMotionMinRotDeg
+	tuning.keyframeOptimizationEnabled = DefaultOptimizationSettings.keyframeOptimizationEnabled
 	visibility.ballOriginal = true
 	visibility.ballCompressed = true
 	visibility.pinsOriginal = true
@@ -646,6 +587,15 @@ const sectionOpen = reactive({
 	channelStats: true,
 	entityTotals: true,
 })
+
+const simInputSubsections = reactive({
+	initial: true,
+	time: true,
+	simulation: true,
+	materials: true,
+	keyframe: true,
+	optimization: true,
+})
 </script>
 
 <template>
@@ -673,10 +623,31 @@ const sectionOpen = reactive({
 					>
 					<div class="sim-actions-row">
 						<button class="secondary" type="button" @click="resetDefaults">Reset Defaults</button>
-						<button class="primary" type="button" @click="runSimulation">Run Simulation</button>
+						<button class="primary" type="button" @click="runSimulation">Run Simulation 🎳</button>
 					</div>
 
 					<div class="field-grid">
+						<div class="field-grid-section field-grid-section--first field-span-2">
+							<div class="field-grid-section-header">
+								<h3 id="sim-section-initial" class="field-grid-section-title">Initial inputs</h3>
+								<button
+									type="button"
+									class="panel-collapse-btn"
+									:aria-expanded="simInputSubsections.initial"
+									:aria-controls="'sim-subsection-initial'"
+									@click="simInputSubsections.initial = !simInputSubsections.initial"
+								>
+									{{ simInputSubsections.initial ? 'Collapse' : 'Expand' }}
+								</button>
+							</div>
+							<div
+								v-show="simInputSubsections.initial"
+								id="sim-subsection-initial"
+								class="field-grid-section-body"
+								role="region"
+								aria-labelledby="sim-section-initial"
+							>
+								<div class="field-grid field-grid--nested">
 						<div class="field-span-2 position-field">
 							<span class="position-field-heading">Position</span>
 							<div class="position-x-control-row">
@@ -767,9 +738,44 @@ const sectionOpen = reactive({
 							</div>
 						</label>
 
+						<div class="field-span-2 direction-field">
+							<span class="position-field-heading">Aim yaw</span>
+							<div class="direction-slider-row">
+								<input
+									v-model.number="directionYawDeg"
+									type="range"
+									:min="DIRECTION_YAW_MIN"
+									:max="DIRECTION_YAW_MAX"
+									step="0.1"
+								/>
+								<input
+									v-model.number="directionYawDeg"
+									class="direction-yaw-num"
+									type="number"
+									:min="DIRECTION_YAW_MIN"
+									:max="DIRECTION_YAW_MAX"
+									step="0.1"
+									title="Yaw about +Y: 0° = +Z, +° → +X. Range ±15° for a typical throw."
+								/>
+							</div>
+							<div class="direction-nudges" role="group" aria-label="Adjust aim by degrees">
+								<button type="button" class="nudge-btn" @click="nudgeDirectionYaw(-5)">−5°</button>
+								<button type="button" class="nudge-btn" @click="nudgeDirectionYaw(-1)">−1°</button>
+								<button type="button" class="nudge-btn" @click="nudgeDirectionYaw(-0.1)">−0.1°</button>
+								<button type="button" class="nudge-btn" @click="setDirectionYawToZero">0°</button>
+								<button type="button" class="nudge-btn" @click="nudgeDirectionYaw(0.1)">+0.1°</button>
+								<button type="button" class="nudge-btn" @click="nudgeDirectionYaw(1)">+1°</button>
+								<button type="button" class="nudge-btn" @click="nudgeDirectionYaw(5)">+5°</button>
+							</div>
+						</div>
+
+						<div class="field-span-2 sim-inputs-midheading" role="separator">
+							<span class="sim-inputs-midheading__title">Rack &amp; bumpers</span>
+						</div>
+
 						<div class="field-span-2 initial-rack-field">
 							<div class="initial-rack-heading-row">
-								<h2>Initial pin rack</h2>
+								<h3>Initial pin rack</h3>
 								<button
 									type="button"
 									class="loop-toggle sim-panel-toggle"
@@ -803,94 +809,58 @@ const sectionOpen = reactive({
 								</div>
 							</div>
 						</div>
-
-						<div class="field-span-2 direction-field">
-							<h3>Aim yaw</h3>
-							<div class="direction-slider-row">
-								<input
-									v-model.number="directionYawDeg"
-									type="range"
-									:min="DIRECTION_YAW_MIN"
-									:max="DIRECTION_YAW_MAX"
-									step="0.1"
-								/>
-								<input
-									v-model.number="directionYawDeg"
-									class="direction-yaw-num"
-									type="number"
-									:min="DIRECTION_YAW_MIN"
-									:max="DIRECTION_YAW_MAX"
-									step="0.1"
-									title="Yaw about +Y: 0° = +Z, +° → +X. Range ±15° for a typical throw."
-								/>
+								</div>
 							</div>
-							<div class="direction-nudges" role="group" aria-label="Adjust aim by degrees">
-								<button type="button" class="nudge-btn" @click="nudgeDirectionYaw(-5)">−5°</button>
-								<button type="button" class="nudge-btn" @click="nudgeDirectionYaw(-1)">−1°</button>
-								<button type="button" class="nudge-btn" @click="nudgeDirectionYaw(-0.1)">−0.1°</button>
-								<button type="button" class="nudge-btn" @click="setDirectionYawToZero">0°</button>
-								<button type="button" class="nudge-btn" @click="nudgeDirectionYaw(0.1)">+0.1°</button>
-								<button type="button" class="nudge-btn" @click="nudgeDirectionYaw(1)">+1°</button>
-								<button type="button" class="nudge-btn" @click="nudgeDirectionYaw(5)">+5°</button>
-							</div>
-							<button
-								type="button"
-								class="axis-toggle-btn direction-compass-btn"
-								:class="{ 'axis-toggle-btn--on': showAimCompass }"
-								:aria-pressed="showAimCompass"
-								@click="toggleAimCompass"
-							>
-								<i class="fa-solid fa-compass" aria-hidden="true" />
-								<span>Aim compass</span>
-							</button>
-							<svg
-								v-if="showAimCompass"
-								ref="directionSvgRef"
-								class="direction-arrow-svg"
-								viewBox="0 0 100 100"
-								role="img"
-								aria-label="Top-down aim; drag the arrow to set yaw"
-								@pointerdown="onDirectionPointerDown"
-								@pointermove="onDirectionPointerMove"
-								@pointerup="onDirectionPointerUp"
-								@pointercancel="onDirectionPointerUp"
-							>
-								<defs>
-									<marker
-										id="direction-arrow-head"
-										markerWidth="7"
-										markerHeight="7"
-										refX="6"
-										refY="3.5"
-										orient="auto"
-									>
-										<polygon class="direction-svg-marker" points="0 0, 7 3.5, 0 7" />
-									</marker>
-								</defs>
-								<rect class="direction-svg-bg" x="0" y="0" width="100" height="100" rx="10" />
-								<text class="direction-svg-axis" x="50" y="14" text-anchor="middle">+Z forward</text>
-								<text class="direction-svg-axis" x="92" y="52" text-anchor="middle" dominant-baseline="middle">
-									+X
-								</text>
-								<line class="direction-svg-grid" x1="50" y1="12" x2="50" y2="88" />
-								<line class="direction-svg-grid" x1="12" y1="50" x2="88" y2="50" />
-								<circle class="direction-svg-ring" cx="50" cy="50" r="36" />
-								<line
-									class="direction-svg-arrow"
-									x1="50"
-									y1="50"
-									:x2="directionArrowTip.x2"
-									:y2="directionArrowTip.y2"
-									marker-end="url(#direction-arrow-head)"
-								/>
-							</svg>
 						</div>
-						<h3 id="sim-section-time" class="field-grid-section-heading">Time</h3>
+						<div class="field-grid-section field-span-2">
+							<div class="field-grid-section-header">
+								<h3 id="sim-section-time" class="field-grid-section-title">Time</h3>
+								<button
+									type="button"
+									class="panel-collapse-btn"
+									:aria-expanded="simInputSubsections.time"
+									:aria-controls="'sim-subsection-time'"
+									@click="simInputSubsections.time = !simInputSubsections.time"
+								>
+									{{ simInputSubsections.time ? 'Collapse' : 'Expand' }}
+								</button>
+							</div>
+							<div
+								v-show="simInputSubsections.time"
+								id="sim-subsection-time"
+								class="field-grid-section-body"
+								role="region"
+								aria-labelledby="sim-section-time"
+							>
+								<div class="field-grid field-grid--nested">
 						<label>
 							<span>Duration (s)</span>
 							<input v-model.number="form.duration" type="number" min="0.5" step="0.25" />
 						</label>
-						<h3 id="sim-section-loop" class="field-grid-section-heading">Simulation</h3>
+								</div>
+							</div>
+						</div>
+						<div class="field-grid-section field-span-2">
+							<div class="field-grid-section-header">
+								<h3 id="sim-section-loop" class="field-grid-section-title">Simulation</h3>
+								<button
+									type="button"
+									class="panel-collapse-btn"
+									:aria-expanded="simInputSubsections.simulation"
+									:aria-controls="'sim-subsection-simulation'"
+									@click="simInputSubsections.simulation = !simInputSubsections.simulation"
+								>
+									{{ simInputSubsections.simulation ? 'Collapse' : 'Expand' }}
+								</button>
+							</div>
+							<div
+								v-show="simInputSubsections.simulation"
+								id="sim-subsection-simulation"
+								class="field-grid-section-body"
+								role="region"
+								aria-labelledby="sim-section-loop"
+							>
+								<div class="field-grid field-grid--nested">
 						<label>
 							<span>Frame rate</span>
 							<input v-model.number="tuning.simFrameRate" type="number" min="1" step="1" />
@@ -926,7 +896,30 @@ const sectionOpen = reactive({
 								title="Stop the roll sampler after this many consecutive frames with no significant velocity."
 							/>
 						</label>
-						<h3 id="sim-section-materials" class="field-grid-section-heading">Materials</h3>
+								</div>
+							</div>
+						</div>
+						<div class="field-grid-section field-span-2">
+							<div class="field-grid-section-header">
+								<h3 id="sim-section-materials" class="field-grid-section-title">Materials</h3>
+								<button
+									type="button"
+									class="panel-collapse-btn"
+									:aria-expanded="simInputSubsections.materials"
+									:aria-controls="'sim-subsection-materials'"
+									@click="simInputSubsections.materials = !simInputSubsections.materials"
+								>
+									{{ simInputSubsections.materials ? 'Collapse' : 'Expand' }}
+								</button>
+							</div>
+							<div
+								v-show="simInputSubsections.materials"
+								id="sim-subsection-materials"
+								class="field-grid-section-body"
+								role="region"
+								aria-labelledby="sim-section-materials"
+							>
+								<div class="field-grid field-grid--nested">
 						<div
 							class="materials-two-col field-span-2"
 							role="group"
@@ -1011,7 +1004,30 @@ const sectionOpen = reactive({
 								</label>
 							</div>
 						</div>
-						<h3 id="sim-section-keyframes" class="field-grid-section-heading">Keyframe &amp; optimization</h3>
+								</div>
+							</div>
+						</div>
+						<div class="field-grid-section field-span-2">
+							<div class="field-grid-section-header">
+								<h3 id="sim-section-keyframe" class="field-grid-section-title">Keyframe</h3>
+								<button
+									type="button"
+									class="panel-collapse-btn"
+									:aria-expanded="simInputSubsections.keyframe"
+									:aria-controls="'sim-subsection-keyframe'"
+									@click="simInputSubsections.keyframe = !simInputSubsections.keyframe"
+								>
+									{{ simInputSubsections.keyframe ? 'Collapse' : 'Expand' }}
+								</button>
+							</div>
+							<div
+								v-show="simInputSubsections.keyframe"
+								id="sim-subsection-keyframe"
+								class="field-grid-section-body"
+								role="region"
+								aria-labelledby="sim-section-keyframe"
+							>
+								<div class="field-grid field-grid--nested">
 						<label>
 							<span>Keyframe flat ε (m)</span>
 							<input
@@ -1067,11 +1083,46 @@ const sectionOpen = reactive({
 								@change="runSimulation"
 							/>
 						</label>
+								</div>
+							</div>
+						</div>
+						<div class="field-grid-section field-span-2">
+							<div class="field-grid-section-header">
+								<h3 id="sim-section-optimization" class="field-grid-section-title">Optimization</h3>
+								<button
+									type="button"
+									class="panel-collapse-btn"
+									:aria-expanded="simInputSubsections.optimization"
+									:aria-controls="'sim-subsection-optimization'"
+									@click="simInputSubsections.optimization = !simInputSubsections.optimization"
+								>
+									{{ simInputSubsections.optimization ? 'Collapse' : 'Expand' }}
+								</button>
+							</div>
+							<div
+								v-show="simInputSubsections.optimization"
+								id="sim-subsection-optimization"
+								class="field-grid-section-body"
+								role="region"
+								aria-labelledby="sim-section-optimization"
+							>
+								<div class="field-grid field-grid--nested">
+						<label class="field-span-2 keyframe-opt-toggle">
+							<span>Enable keyframe optimization</span>
+							<input
+								v-model="tuning.keyframeOptimizationEnabled"
+								type="checkbox"
+								@change="runSimulation"
+							/>
+						</label>
+								</div>
+							</div>
+						</div>
 					</div>
 
 					<div class="sim-actions-row sim-actions-row--bottom">
 						<button class="secondary" type="button" @click="resetDefaults">Reset Defaults</button>
-						<button class="primary" type="button" @click="runSimulation">Run Simulation</button>
+						<button class="primary" type="button" @click="runSimulation">Run Simulation 🎳</button>
 					</div>
 					</div>
 				</div>
@@ -1575,12 +1626,38 @@ button {
 	grid-column: 1 / -1;
 }
 
-.field-grid-section-heading {
-	grid-column: 1 / -1;
+.field-grid--nested {
+	display: grid;
+	gap: 10px;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
 	margin: 0;
+	width: 100%;
+	min-width: 0;
+}
+
+.field-grid-section {
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+	min-width: 0;
+}
+
+.field-grid-section-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
 	margin-top: 0.65rem;
 	padding-top: 0.8rem;
 	border-top: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.field-grid-section--first .field-grid-section-header {
+	margin-top: 0.35rem;
+}
+
+.field-grid-section-title {
+	margin: 0;
 	font-size: 0.76rem;
 	font-weight: 600;
 	letter-spacing: 0.055em;
@@ -1588,9 +1665,26 @@ button {
 	color: #8b9caf;
 }
 
-/* First block after aim: align with field-grid gap */
-.direction-field + .field-grid-section-heading {
-	margin-top: 0.1rem;
+.field-grid-section-body {
+	width: 100%;
+	min-width: 0;
+}
+
+.field-grid label.keyframe-opt-toggle {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 10px;
+}
+
+.keyframe-opt-toggle input[type='checkbox'] {
+	width: 1.1rem;
+	height: 1.1rem;
+	cursor: pointer;
+}
+
+.field-grid-section-body .field-grid--nested {
+	margin-top: 0;
 }
 
 .materials-two-col {
@@ -1701,7 +1795,7 @@ button {
 	gap: 10px 16px;
 }
 
-.initial-rack-heading-row h2 {
+.initial-rack-heading-row h3 {
 	margin: 0;
 }
 
@@ -1843,12 +1937,20 @@ button {
 	min-width: 0;
 }
 
-.direction-compass-btn {
-	margin-top: 2px;
-	align-self: start;
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
+.sim-inputs-midheading {
+	grid-column: 1 / -1;
+	margin: 0.35rem 0 0;
+	padding-top: 0.75rem;
+	border-top: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.sim-inputs-midheading__title {
+	display: block;
+	font-size: 0.76rem;
+	font-weight: 600;
+	letter-spacing: 0.055em;
+	text-transform: uppercase;
+	color: #8b9caf;
 }
 
 .direction-slider-row {
@@ -1892,56 +1994,6 @@ button {
 
 .nudge-btn:hover {
 	background: rgba(148, 163, 184, 0.24);
-}
-
-.direction-arrow-svg {
-	display: block;
-	width: 100%;
-	max-width: 100%;
-	height: auto;
-	aspect-ratio: 1;
-	margin: 0;
-	touch-action: none;
-	cursor: grab;
-	user-select: none;
-}
-
-.direction-arrow-svg:active {
-	cursor: grabbing;
-}
-
-.direction-svg-bg {
-	fill: rgba(15, 23, 42, 0.85);
-	stroke: rgba(148, 163, 184, 0.2);
-	stroke-width: 1;
-}
-
-.direction-svg-axis {
-	fill: #64748b;
-	font-size: 8px;
-	font-family: ui-monospace, monospace;
-}
-
-.direction-svg-grid {
-	stroke: rgba(100, 116, 139, 0.35);
-	stroke-width: 0.6;
-	stroke-dasharray: 3 3;
-}
-
-.direction-svg-ring {
-	fill: none;
-	stroke: rgba(56, 189, 248, 0.2);
-	stroke-width: 0.75;
-}
-
-.direction-svg-arrow {
-	stroke: #38bdf8;
-	stroke-width: 2.5;
-	stroke-linecap: round;
-}
-
-polygon.direction-svg-marker {
-	fill: #38bdf8;
 }
 
 .field-grid span {

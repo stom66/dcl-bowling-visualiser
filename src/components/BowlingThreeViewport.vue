@@ -722,11 +722,16 @@ function toggleColliderWireframes(): void {
 		</div>
 
 		<div class="three-controls-bar">
-			<div class="source-toggle" role="radiogroup" aria-label="Keyframe source">
+			<div class="source-segment" role="radiogroup" aria-label="Keyframe source">
+				<span
+					class="source-segment-slider"
+					:class="{ 'source-segment-slider--right': playbackSource === 'compressed' }"
+					aria-hidden="true"
+				/>
 				<button
 					type="button"
-					class="axis-toggle-btn"
-					:class="{ 'axis-toggle-btn--on': playbackSource === 'original' }"
+					class="source-segment-btn"
+					:class="{ 'source-segment-btn--active': playbackSource === 'original' }"
 					role="radio"
 					:aria-checked="playbackSource === 'original'"
 					@click="playbackSource = 'original'"
@@ -735,8 +740,8 @@ function toggleColliderWireframes(): void {
 				</button>
 				<button
 					type="button"
-					class="axis-toggle-btn"
-					:class="{ 'axis-toggle-btn--on': playbackSource === 'compressed' }"
+					class="source-segment-btn"
+					:class="{ 'source-segment-btn--active': playbackSource === 'compressed' }"
 					role="radio"
 					:aria-checked="playbackSource === 'compressed'"
 					@click="playbackSource = 'compressed'"
@@ -827,47 +832,69 @@ function toggleColliderWireframes(): void {
 	display: block;
 }
 
-.source-toggle {
+.source-segment {
+	position: relative;
 	display: inline-flex;
-	flex-wrap: nowrap;
-	gap: 8px;
-	align-items: center;
+	align-items: stretch;
+	flex-shrink: 0;
+	min-width: 13.5rem;
+	border-radius: 10px;
+	padding: 3px;
+	border: 1px solid rgba(148, 163, 184, 0.28);
+	background: rgba(15, 23, 42, 0.85);
+	box-sizing: border-box;
 }
 
-.axis-toggle-btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	border: 1px solid rgba(148, 163, 184, 0.28);
-	border-radius: 10px;
-	padding: 8px 10px;
+.source-segment-slider {
+	position: absolute;
+	top: 3px;
+	bottom: 3px;
+	left: 3px;
+	width: calc((100% - 6px) / 2);
+	border-radius: 8px;
+	background: rgba(14, 165, 233, 0.22);
+	border: 1px solid rgba(56, 189, 248, 0.55);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+	transition: transform 0.26s cubic-bezier(0.4, 0, 0.2, 1);
+	z-index: 0;
+	pointer-events: none;
+	will-change: transform;
+}
+
+.source-segment-slider--right {
+	transform: translateX(100%);
+}
+
+.source-segment-btn {
+	position: relative;
+	z-index: 1;
+	flex: 1 1 0;
+	min-width: 0;
+	margin: 0;
+	padding: 8px 12px;
+	border: 0;
+	border-radius: 8px;
 	cursor: pointer;
 	font: inherit;
 	font-size: 0.88rem;
-	font-weight: 600;
-	color: #cbd5e1;
-	background: rgba(15, 23, 42, 0.65);
+	font-weight: 500;
+	color: #94a3b8;
+	background: transparent;
+	transition: color 0.2s ease, font-weight 0.2s ease;
 	white-space: nowrap;
-	min-width: 2.5rem;
-	transition:
-		background 0.15s ease,
-		border-color 0.15s ease,
-		color 0.15s ease;
 }
 
-.axis-toggle-btn:hover {
-	border-color: rgba(56, 189, 248, 0.45);
+.source-segment-btn:hover {
 	color: #e2e8f0;
 }
 
-.axis-toggle-btn--on {
-	border-color: rgba(56, 189, 248, 0.65);
-	background: rgba(14, 165, 233, 0.18);
-	color: #7dd3fc;
+.source-segment-btn--active {
+	color: #e0f2fe;
+	font-weight: 600;
 }
 
-.axis-toggle-btn:focus-visible {
-	outline: 2px solid rgba(56, 189, 248, 0.55);
+.source-segment-btn:focus-visible {
+	outline: 2px solid rgba(56, 189, 248, 0.65);
 	outline-offset: 2px;
 }
 
