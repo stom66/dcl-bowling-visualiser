@@ -11,7 +11,6 @@
   },
   "dependencies": {
     "@dcl/sdk": "7.22.5-24836126953.commit-ddc8da1",
-    "@rolldown/binding-win32-x64-msvc": "^1.0.0-rc.17",
     "cannon-es": "^0.20.0",
     "echarts": "^6.0.0",
     "three": "^0.184.0",
