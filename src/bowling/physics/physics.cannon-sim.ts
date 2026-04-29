@@ -105,7 +105,9 @@ const UPRIGHT_PIN_QUATERNION = Quaternion.lookRotation(Vector3.Forward(), Vector
 
 /** Bodies at or below this Y are treated as fallen through the lane; stop integrating them. */
 const UNDERGROUND_SLEEP_Y = -0.4
-const LANE_END_Z_SLEEP_Y = 22
+
+/** Bodies at or above this Z are treated as fallen off the end of the lane; stop integrating them. */
+const LANE_END_Z_SLEEP = 22
 
 /** When the ball is this far along the lane, wake up the pins. */
 const PIN_WAKUP_WHEN_BALL_Z = 17.5
@@ -121,8 +123,8 @@ export class CannonSim {
 	private readonly pinBodies       : Body[]
 	private readonly initialPinStates: boolean[]
 
-	private currentStep: number = 0
-	private logger: TimeLogger = new TimeLogger()
+	private currentStep: number     = 0
+	private logger     : TimeLogger = new TimeLogger()
 
 	// Caches
 	private _ballCache: CannonSimObjectState = {
@@ -252,14 +254,14 @@ export class CannonSim {
 		// step physics
 		for (let i = 0; i < subSteps; i++) this.world.step(subDt, undefined)
 
-		if (ball.position.y < UNDERGROUND_SLEEP_Y || ball.position.z > LANE_END_Z_SLEEP_Y) {
+		if (ball.position.y < UNDERGROUND_SLEEP_Y || ball.position.z > LANE_END_Z_SLEEP) {
 			ball.velocity.set(0, 0, 0)
 			ball.angularVelocity.set(0, 0, 0)
 			ball.sleep()
 		}
 		for (let i = 0; i < pins.length; i++) {
 			const pinBody = pins[i]!
-			if (pinBody.position.y < UNDERGROUND_SLEEP_Y || pinBody.position.z > LANE_END_Z_SLEEP_Y) {
+			if (pinBody.position.y < UNDERGROUND_SLEEP_Y || pinBody.position.z > LANE_END_Z_SLEEP) {
 				pinBody.velocity.set(0, 0, 0)
 				pinBody.angularVelocity.set(0, 0, 0)
 				pinBody.sleep()
